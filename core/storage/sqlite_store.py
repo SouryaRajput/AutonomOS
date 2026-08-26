@@ -4,8 +4,11 @@ import sqlite3
 import threading
 from typing import Optional
 
-from core.enums import ArtifactType, DependencyType, ProjectStatus, RiskLevel, TaskStatus, WorkerStatus
+from core.enums import ArtifactType, DependencyType, MemoryType, ProjectStatus, RiskLevel, TaskStatus, WorkerStatus
 from core.errors import PersistenceError
+from core.events.model import Event
+from core.events.types import EventSource, EventType
+from core.memory.model import MemoryDocument
 from core.models import Artifact, Dependency, Project, Task, WorkerManifest, utc_now
 from core.storage.base import Store
 
@@ -24,7 +27,7 @@ class SQLiteStore(Store):
         self._conn = sqlite3.connect(
             db_path,
             check_same_thread=False,
-            autocommit=False,
+            isolation_level=None,  # Autocommit mode for explicit transaction control
         )
         self._conn.row_factory = sqlite3.Row
         self._init_db()
@@ -136,7 +139,60 @@ class SQLiteStore(Store):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_task ON artifacts(task_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_artifacts_project ON artifacts(project_id);")
 
-            self._conn.commit()
+            # Events table (Stage 2)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS events (
+                    sequence_number INTEGER PRIMARY KEY AUTOINCREMENT,
+                    event_id TEXT UNIQUE NOT NULL,
+                    event_type TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    source TEXT NOT NULL,
+                    correlation_id TEXT NOT NULL,
+                    causation_id TEXT,
+                    project_id TEXT,
+                    task_id TEXT,
+                    worker_id TEXT,
+                    artifact_id TEXT,
+                    schema_version INTEGER NOT NULL DEFAULT 1,
+                    payload TEXT NOT NULL,
+                    metadata TEXT NOT NULL
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_event_id ON events(event_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_project ON events(project_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_task ON events(task_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_worker ON events(worker_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_correlation ON events(correlation_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_causation ON events(causation_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_events_type ON events(event_type);")
+
+            # Memory Documents table (Stage 3)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS memory_documents (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    memory_type TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    relative_path TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    tags TEXT NOT NULL,
+                    references_json TEXT NOT NULL,
+                    related_task_id TEXT,
+                    related_worker_id TEXT,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    checksum TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+                    UNIQUE(project_id, relative_path)
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_project ON memory_documents(project_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_type ON memory_documents(memory_type);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_task ON memory_documents(related_task_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_path ON memory_documents(project_id, relative_path);")
 
     # Project Operations
     def save_project(self, project: Project) -> None:
@@ -163,9 +219,7 @@ class SQLiteStore(Store):
                     project.created_at,
                     project.updated_at or utc_now(),
                 ))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("save_project", str(e)) from e
 
     def get_project(self, project_id: str) -> Optional[Project]:
@@ -210,10 +264,8 @@ class SQLiteStore(Store):
             try:
                 cursor = self._conn.cursor()
                 cursor.execute("DELETE FROM projects WHERE id = ?;", (project_id,))
-                self._conn.commit()
                 return cursor.rowcount > 0
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("delete_project", str(e)) from e
 
     # Worker Operations
@@ -251,9 +303,7 @@ class SQLiteStore(Store):
                     worker.created_at,
                     worker.updated_at or utc_now(),
                 ))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("save_worker", str(e)) from e
 
     def get_worker(self, worker_id: str) -> Optional[WorkerManifest]:
@@ -308,10 +358,8 @@ class SQLiteStore(Store):
             try:
                 cursor = self._conn.cursor()
                 cursor.execute("DELETE FROM workers WHERE id = ?;", (worker_id,))
-                self._conn.commit()
                 return cursor.rowcount > 0
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("delete_worker", str(e)) from e
 
     def update_worker_status(self, worker_id: str, status: WorkerStatus, active_task_id: Optional[str] = None) -> None:
@@ -324,9 +372,7 @@ class SQLiteStore(Store):
                     SET status = ?, active_task_id = ?, updated_at = ?
                     WHERE id = ?;
                 """, (status_str, active_task_id, utc_now(), worker_id))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("update_worker_status", str(e)) from e
 
     # Task Operations
@@ -377,9 +423,7 @@ class SQLiteStore(Store):
                     task.started_at,
                     task.completed_at,
                 ))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("save_task", str(e)) from e
 
     def get_task(self, task_id: str) -> Optional[Task]:
@@ -420,10 +464,8 @@ class SQLiteStore(Store):
             try:
                 cursor = self._conn.cursor()
                 cursor.execute("DELETE FROM tasks WHERE id = ?;", (task_id,))
-                self._conn.commit()
                 return cursor.rowcount > 0
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("delete_task", str(e)) from e
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
@@ -465,9 +507,7 @@ class SQLiteStore(Store):
                     dependency.dependency_type.value if isinstance(dependency.dependency_type, DependencyType) else dependency.dependency_type,
                     dependency.created_at,
                 ))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("add_dependency", str(e)) from e
 
     def get_dependencies_for_task(self, task_id: str) -> list[Dependency]:
@@ -507,10 +547,8 @@ class SQLiteStore(Store):
             try:
                 cursor = self._conn.cursor()
                 cursor.execute("DELETE FROM dependencies WHERE id = ?;", (dependency_id,))
-                self._conn.commit()
                 return cursor.rowcount > 0
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("remove_dependency", str(e)) from e
 
     # Artifact Operations
@@ -538,9 +576,7 @@ class SQLiteStore(Store):
                     json.dumps(artifact.metadata),
                     artifact.created_at,
                 ))
-                self._conn.commit()
             except Exception as e:
-                self._conn.rollback()
                 raise PersistenceError("save_artifact", str(e)) from e
 
     def get_artifact(self, artifact_id: str) -> Optional[Artifact]:
@@ -604,6 +640,262 @@ class SQLiteStore(Store):
                 )
                 for row in rows
             ]
+
+    # Event Store Operations (Stage 2)
+    def append_event(self, event: Event) -> Event:
+        """Append an immutable event to the event store. Returns the event with its assigned sequence number."""
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO events (
+                        event_id, event_type, timestamp, source, correlation_id, causation_id,
+                        project_id, task_id, worker_id, artifact_id, schema_version, payload, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                """, (
+                    event.event_id,
+                    event.event_type.value if isinstance(event.event_type, EventType) else event.event_type,
+                    event.timestamp,
+                    event.source.value if isinstance(event.source, EventSource) else event.source,
+                    event.correlation_id,
+                    event.causation_id,
+                    event.project_id,
+                    event.task_id,
+                    event.worker_id,
+                    event.artifact_id,
+                    event.schema_version,
+                    json.dumps(event.payload),
+                    json.dumps(event.metadata),
+                ))
+                seq = cursor.lastrowid
+                event.sequence_number = seq
+                return event
+            except sqlite3.IntegrityError as e:
+                raise PersistenceError("append_event", f"Event with ID '{event.event_id}' already exists (immutability violation): {e}") from e
+            except Exception as e:
+                raise PersistenceError("append_event", str(e)) from e
+
+    def get_event(self, event_id: str) -> Optional[Event]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM events WHERE event_id = ?;", (event_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._row_to_event(row)
+
+    def list_events(
+        self,
+        project_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        worker_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        event_types: Optional[list[EventType]] = None,
+        since_sequence: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> list[Event]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM events WHERE 1=1"
+            params = []
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if task_id:
+                query += " AND task_id = ?"
+                params.append(task_id)
+            if worker_id:
+                query += " AND worker_id = ?"
+                params.append(worker_id)
+            if correlation_id:
+                query += " AND correlation_id = ?"
+                params.append(correlation_id)
+            if event_types:
+                placeholders = ",".join("?" for _ in event_types)
+                query += f" AND event_type IN ({placeholders})"
+                for et in event_types:
+                    params.append(et.value if isinstance(et, EventType) else et)
+            if since_sequence is not None:
+                query += " AND sequence_number > ?"
+                params.append(since_sequence)
+
+            query += " ORDER BY sequence_number ASC"
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [self._row_to_event(row) for row in rows]
+
+    def get_events_by_correlation_id(self, correlation_id: str) -> list[Event]:
+        return self.list_events(correlation_id=correlation_id)
+
+    def get_events_by_task(self, task_id: str) -> list[Event]:
+        return self.list_events(task_id=task_id)
+
+    def get_events_by_project(self, project_id: str) -> list[Event]:
+        return self.list_events(project_id=project_id)
+
+    def get_causal_chain(self, event_id: str) -> list[Event]:
+        """Traverse backwards via causation_id to assemble the causal lineage leading to this event."""
+        with self._lock:
+            chain = []
+            curr_id = event_id
+            visited = set()
+            while curr_id and curr_id not in visited:
+                visited.add(curr_id)
+                evt = self.get_event(curr_id)
+                if not evt:
+                    break
+                chain.append(evt)
+                curr_id = evt.causation_id
+            chain.reverse()  # Root cause first
+            return chain
+
+    def _row_to_event(self, row: sqlite3.Row) -> Event:
+        return Event(
+            event_id=row["event_id"],
+            sequence_number=row["sequence_number"],
+            event_type=EventType(row["event_type"]),
+            timestamp=row["timestamp"],
+            source=EventSource(row["source"]),
+            correlation_id=row["correlation_id"],
+            causation_id=row["causation_id"],
+            project_id=row["project_id"],
+            task_id=row["task_id"],
+            worker_id=row["worker_id"],
+            artifact_id=row["artifact_id"],
+            schema_version=row["schema_version"],
+            payload=json.loads(row["payload"]),
+            metadata=json.loads(row["metadata"]),
+        )
+
+    # Memory Store Operations (Stage 3)
+    def save_memory_document(self, doc: MemoryDocument) -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO memory_documents (
+                        id, project_id, memory_type, title, relative_path, content, summary,
+                        tags, references_json, related_task_id, related_worker_id, version,
+                        checksum, metadata, created_at, updated_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        relative_path = excluded.relative_path,
+                        content = excluded.content,
+                        summary = excluded.summary,
+                        tags = excluded.tags,
+                        references_json = excluded.references_json,
+                        related_task_id = excluded.related_task_id,
+                        related_worker_id = excluded.related_worker_id,
+                        version = excluded.version,
+                        checksum = excluded.checksum,
+                        metadata = excluded.metadata,
+                        updated_at = excluded.updated_at;
+                """, (
+                    doc.id,
+                    doc.project_id,
+                    doc.memory_type.value if isinstance(doc.memory_type, MemoryType) else doc.memory_type,
+                    doc.title,
+                    doc.relative_path,
+                    doc.content,
+                    doc.summary,
+                    json.dumps(doc.tags),
+                    json.dumps(doc.references),
+                    doc.related_task_id,
+                    doc.related_worker_id,
+                    doc.version,
+                    doc.checksum,
+                    json.dumps(doc.metadata),
+                    doc.created_at,
+                    doc.updated_at or utc_now(),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_memory_document", str(e)) from e
+
+    def get_memory_document(self, memory_id: str) -> Optional[MemoryDocument]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM memory_documents WHERE id = ?;", (memory_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._row_to_memory_doc(row)
+
+    def get_memory_document_by_path(self, project_id: str, relative_path: str) -> Optional[MemoryDocument]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute(
+                "SELECT * FROM memory_documents WHERE project_id = ? AND relative_path = ?;",
+                (project_id, relative_path),
+            )
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return self._row_to_memory_doc(row)
+
+    def list_memory_documents(
+        self,
+        project_id: Optional[str] = None,
+        memory_type: Optional[MemoryType] = None,
+        tag: Optional[str] = None,
+        related_task_id: Optional[str] = None,
+    ) -> list[MemoryDocument]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM memory_documents WHERE 1=1"
+            params = []
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if memory_type:
+                query += " AND memory_type = ?"
+                params.append(memory_type.value if isinstance(memory_type, MemoryType) else memory_type)
+            if related_task_id:
+                query += " AND related_task_id = ?"
+                params.append(related_task_id)
+
+            query += " ORDER BY updated_at DESC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            docs = [self._row_to_memory_doc(row) for row in rows]
+            if tag:
+                docs = [d for d in docs if tag in d.tags]
+            return docs
+
+    def delete_memory_document(self, memory_id: str) -> bool:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("DELETE FROM memory_documents WHERE id = ?;", (memory_id,))
+                return cursor.rowcount > 0
+            except Exception as e:
+                raise PersistenceError("delete_memory_document", str(e)) from e
+
+    def _row_to_memory_doc(self, row: sqlite3.Row) -> MemoryDocument:
+        return MemoryDocument(
+            id=row["id"],
+            project_id=row["project_id"],
+            memory_type=MemoryType(row["memory_type"]),
+            title=row["title"],
+            relative_path=row["relative_path"],
+            content=row["content"],
+            summary=row["summary"],
+            tags=json.loads(row["tags"]),
+            references=json.loads(row["references_json"]),
+            related_task_id=row["related_task_id"],
+            related_worker_id=row["related_worker_id"],
+            version=row["version"],
+            checksum=row["checksum"],
+            metadata=json.loads(row["metadata"]),
+            created_at=row["created_at"],
+            updated_at=row["updated_at"],
+        )
 
     def close(self) -> None:
         with self._lock:

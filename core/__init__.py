@@ -2,6 +2,9 @@
 from core.enums import (
     ArtifactType,
     DependencyType,
+    IssueSeverity,
+    IssueStatus,
+    MemoryType,
     ProjectStatus,
     RiskLevel,
     TaskStatus,
@@ -15,6 +18,10 @@ from core.errors import (
     ExecutionFailedError,
     InvalidTaskTransitionError,
     InvalidWorkerTransitionError,
+    MemoryAlreadyExistsError,
+    MemoryConflictError,
+    MemoryNotFoundError,
+    MemoryValidationError,
     PersistenceError,
     ProjectAlreadyExistsError,
     ProjectNotFoundError,
@@ -26,6 +33,11 @@ from core.errors import (
     WorkerNotEligibleError,
     WorkerNotFoundError,
 )
+from core.events.activity import ActivityItem, ActivityLevel, ActivityProjector, format_event_log_line
+from core.events.model import Event, new_event_id
+from core.events.types import EventSource, EventType
+from core.memory.manager import MemoryManager
+from core.memory.model import MemoryDocument, ReferenceIssue, ValidationReport, compute_checksum
 from core.models import (
     Artifact,
     Dependency,
@@ -41,6 +53,9 @@ from core.models import (
 __all__ = [
     "ArtifactType",
     "DependencyType",
+    "MemoryType",
+    "IssueSeverity",
+    "IssueStatus",
     "ProjectStatus",
     "RiskLevel",
     "TaskStatus",
@@ -52,6 +67,10 @@ __all__ = [
     "ExecutionFailedError",
     "InvalidTaskTransitionError",
     "InvalidWorkerTransitionError",
+    "MemoryAlreadyExistsError",
+    "MemoryConflictError",
+    "MemoryNotFoundError",
+    "MemoryValidationError",
     "PersistenceError",
     "ProjectAlreadyExistsError",
     "ProjectNotFoundError",
@@ -71,4 +90,17 @@ __all__ = [
     "WorkerOutput",
     "new_id",
     "utc_now",
+    "Event",
+    "EventType",
+    "EventSource",
+    "new_event_id",
+    "ActivityItem",
+    "ActivityLevel",
+    "ActivityProjector",
+    "format_event_log_line",
+    "MemoryManager",
+    "MemoryDocument",
+    "ReferenceIssue",
+    "ValidationReport",
+    "compute_checksum",
 ]

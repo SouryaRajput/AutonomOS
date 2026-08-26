@@ -168,3 +168,43 @@ class ArtifactNotFoundError(AutonomOSError):
             code="ARTIFACT_NOT_FOUND",
             details={"artifact_id": artifact_id},
         )
+
+
+# Memory Errors (Stage 3)
+class MemoryNotFoundError(AutonomOSError):
+    def __init__(self, memory_id: str, path: Optional[str] = None):
+        msg = f"Memory document '{memory_id}' not found."
+        if path:
+            msg += f" (Path: {path})"
+        super().__init__(
+            msg,
+            code="MEMORY_NOT_FOUND",
+            details={"memory_id": memory_id, "path": path},
+        )
+
+
+class MemoryAlreadyExistsError(AutonomOSError):
+    def __init__(self, identifier: str):
+        super().__init__(
+            f"Memory document '{identifier}' already exists.",
+            code="MEMORY_ALREADY_EXISTS",
+            details={"identifier": identifier},
+        )
+
+
+class MemoryValidationError(AutonomOSError):
+    def __init__(self, memory_id: str, issues: list[str]):
+        super().__init__(
+            f"Validation failed for memory document '{memory_id}': {issues}",
+            code="MEMORY_VALIDATION_ERROR",
+            details={"memory_id": memory_id, "issues": issues},
+        )
+
+
+class MemoryConflictError(AutonomOSError):
+    def __init__(self, memory_id: str, current_version: int, expected_version: int):
+        super().__init__(
+            f"Concurrent modification conflict on memory '{memory_id}': current version is {current_version}, expected {expected_version}.",
+            code="MEMORY_CONFLICT",
+            details={"memory_id": memory_id, "current_version": current_version, "expected_version": expected_version},
+        )

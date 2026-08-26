@@ -50,20 +50,20 @@ class DependencyResolver:
     def _would_create_cycle(self, dependent_id: str, prerequisite_id: str) -> bool:
         """
         Check if prerequisite_id already depends on dependent_id directly or transitively.
-        If it does, adding dependent_id -> prerequisite_id would close a loop.
+        If prerequisite_id requires dependent_id, making dependent_id require prerequisite_id would close a loop.
         """
         visited = set()
-        stack = [dependent_id]
+        stack = [prerequisite_id]
 
         while stack:
             curr = stack.pop()
-            if curr == prerequisite_id:
+            if curr == dependent_id:
                 return True
             if curr in visited:
                 continue
             visited.add(curr)
 
-            # Get tasks that curr depends on
+            # Get prerequisites that curr depends on
             deps = self.store.get_dependencies_for_task(curr)
             for d in deps:
                 if d.prerequisite_task_id not in visited:

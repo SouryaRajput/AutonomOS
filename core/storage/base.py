@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import Optional
 
-from core.enums import TaskStatus, WorkerStatus
+from core.enums import MemoryType, TaskStatus, WorkerStatus
+from core.events.model import Event
+from core.events.types import EventType
+from core.memory.model import MemoryDocument
 from core.models import Artifact, Dependency, Project, Task, WorkerManifest
 
 
@@ -121,6 +124,83 @@ class Store(ABC):
     @abstractmethod
     def list_artifacts_for_project(self, project_id: str) -> list[Artifact]:
         """List all artifacts belonging to a project."""
+        pass
+
+    # Event Store Operations (Stage 2)
+    @abstractmethod
+    def append_event(self, event: Event) -> Event:
+        """Append an immutable event to the event log and assign a monotonic sequence number."""
+        pass
+
+    @abstractmethod
+    def get_event(self, event_id: str) -> Optional[Event]:
+        """Retrieve an event by ID."""
+        pass
+
+    @abstractmethod
+    def list_events(
+        self,
+        project_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        worker_id: Optional[str] = None,
+        correlation_id: Optional[str] = None,
+        event_types: Optional[list[EventType]] = None,
+        since_sequence: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> list[Event]:
+        """Query events with flexible filtering ordered by sequence number."""
+        pass
+
+    @abstractmethod
+    def get_events_by_correlation_id(self, correlation_id: str) -> list[Event]:
+        """Retrieve all events belonging to a specific correlation/execution chain."""
+        pass
+
+    @abstractmethod
+    def get_events_by_task(self, task_id: str) -> list[Event]:
+        """Retrieve full chronological timeline of events for a specific task."""
+        pass
+
+    @abstractmethod
+    def get_events_by_project(self, project_id: str) -> list[Event]:
+        """Retrieve all events for a project."""
+        pass
+
+    @abstractmethod
+    def get_causal_chain(self, event_id: str) -> list[Event]:
+        """Reconstruct the causal lineage of events leading up to this event."""
+        pass
+
+    # Memory Store Operations (Stage 3)
+    @abstractmethod
+    def save_memory_document(self, doc: MemoryDocument) -> None:
+        """Persist or update a memory document record."""
+        pass
+
+    @abstractmethod
+    def get_memory_document(self, memory_id: str) -> Optional[MemoryDocument]:
+        """Retrieve a memory document by ID."""
+        pass
+
+    @abstractmethod
+    def get_memory_document_by_path(self, project_id: str, relative_path: str) -> Optional[MemoryDocument]:
+        """Retrieve a memory document by relative path within a project."""
+        pass
+
+    @abstractmethod
+    def list_memory_documents(
+        self,
+        project_id: Optional[str] = None,
+        memory_type: Optional[MemoryType] = None,
+        tag: Optional[str] = None,
+        related_task_id: Optional[str] = None,
+    ) -> list[MemoryDocument]:
+        """List memory documents with optional filters."""
+        pass
+
+    @abstractmethod
+    def delete_memory_document(self, memory_id: str) -> bool:
+        """Delete a memory document record."""
         pass
 
     # Lifecycle
