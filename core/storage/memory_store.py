@@ -1,6 +1,6 @@
 import copy
 import threading
-from typing import Optional
+from typing import Any, Optional
 
 from core.enums import MemoryType, TaskStatus, WorkerStatus
 from core.errors import PersistenceError
@@ -25,6 +25,8 @@ class MemoryStore(Store):
         self._events_by_id: dict[str, Event] = {}
         self._seq_counter = 0
         self._memory_docs: dict[str, MemoryDocument] = {}
+        self._plans: dict[str, Any] = {}
+        self._manager_decisions: dict[str, Any] = {}
 
     def save_project(self, project: Project) -> None:
         with self._lock:
@@ -279,6 +281,38 @@ class MemoryStore(Store):
                 return True
             return False
 
+    # Manager Plan & Decision Operations (Stage 10)
+    def save_plan(self, plan: Any) -> None:
+        with self._lock:
+            self._plans[plan.id] = copy.deepcopy(plan)
+
+    def get_plan(self, plan_id: str) -> Optional[Any]:
+        with self._lock:
+            p = self._plans.get(plan_id)
+            return copy.deepcopy(p) if p else None
+
+    def list_plans_for_project(self, project_id: str) -> list[Any]:
+        with self._lock:
+            plans = [p for p in self._plans.values() if p.project_id == project_id]
+            return [copy.deepcopy(p) for p in sorted(plans, key=lambda x: x.version)]
+
+    def save_manager_decision(self, decision: Any) -> None:
+        with self._lock:
+            self._manager_decisions[decision.decision_id] = copy.deepcopy(decision)
+
+    def get_manager_decision(self, decision_id: str) -> Optional[Any]:
+        with self._lock:
+            d = self._manager_decisions.get(decision_id)
+            return copy.deepcopy(d) if d else None
+
+    def list_manager_decisions_for_project(self, project_id: str, limit: Optional[int] = None) -> list[Any]:
+        with self._lock:
+            decisions = [d for d in self._manager_decisions.values() if d.project_id == project_id]
+            decisions = sorted(decisions, key=lambda x: x.created_at)
+            if limit:
+                decisions = decisions[:limit]
+            return [copy.deepcopy(d) for d in decisions]
+
     def close(self) -> None:
         with self._lock:
             self._projects.clear()
@@ -289,3 +323,5 @@ class MemoryStore(Store):
             self._events.clear()
             self._events_by_id.clear()
             self._memory_docs.clear()
+            self._plans.clear()
+            self._manager_decisions.clear()

@@ -139,7 +139,7 @@ class TaskEngine:
 
         self.dependency_resolver.add_dependency(
             dependent_task_id=dependent_task_id,
-            prerequisite_task_id=prereq_id,
+            prerequisite_task_id=prerequisite_task_id,
             dependency_type=dependency_type,
         )
 

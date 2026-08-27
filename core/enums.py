@@ -76,3 +76,13 @@ class IssueStatus(str, Enum):
     IN_PROGRESS = "IN_PROGRESS"
     RESOLVED = "RESOLVED"
     CLOSED = "CLOSED"
+
+
+class ToolStatus(str, Enum):
+    """Execution status for a tool request."""
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    DENIED = "DENIED"
+    TIMEOUT = "TIMEOUT"
+    CANCELLED = "CANCELLED"
+    VALIDATION_ERROR = "VALIDATION_ERROR"

@@ -1,4 +1,19 @@
 """AutonomOS Core Domain & Runtime Package."""
+from core.context.engine import ContextEngine
+from core.context.model import (
+    ContextBudget,
+    ContextItem,
+    ContextPackage,
+    ContextRequest,
+    ContextWarning,
+    estimate_tokens,
+)
+from core.context.scoring import RelevanceScorer
+from core.context.types import (
+    ContextPriority,
+    ContextSourceType,
+    ContextWarningType,
+)
 from core.enums import (
     ArtifactType,
     DependencyType,
@@ -8,6 +23,7 @@ from core.enums import (
     ProjectStatus,
     RiskLevel,
     TaskStatus,
+    ToolStatus,
     WorkerStatus,
 )
 from core.errors import (
@@ -28,6 +44,14 @@ from core.errors import (
     TaskAlreadyAssignedError,
     TaskAlreadyCompletedError,
     TaskNotFoundError,
+    ToolArgumentValidationError,
+    ToolExecutionError,
+    ToolNotFoundError,
+    ToolOutputLimitError,
+    ToolPermissionDeniedError,
+    ToolTimeoutError,
+    ToolUnavailableError,
+    ToolWorkspaceViolationError,
     WorkerAlreadyExistsError,
     WorkerBusyError,
     WorkerNotEligibleError,
@@ -49,6 +73,131 @@ from core.models import (
     new_id,
     utc_now,
 )
+from core.safety.checkpoint import CheckpointManager, compute_file_checksum
+from core.safety.evaluator import SafetyEvaluator
+from core.safety.model import (
+    ChangeRecord,
+    Checkpoint,
+    RollbackResult,
+    SafetyConfig,
+    SafetyDecision,
+    ScopeDeviation,
+)
+from core.safety.rollback import RollbackManager
+from core.safety.scope import ScopeTracker
+from core.safety.types import (
+    CheckpointStatus,
+    CheckpointType,
+    RollbackStatus,
+    SafetyAction,
+    ScopeDeviationType,
+)
+from core.tools.base import BaseTool
+from core.tools.model import (
+    ToolDefinition,
+    ToolExecutionContext,
+    ToolRequest,
+    ToolResult,
+)
+from core.tools.policy import PermissionPolicy
+from core.tools.registry import ToolRegistry
+from core.tools.runtime import ToolRuntime
+from core.tools.types import ToolCategory
+import core.verification
+from core.verification.adapters.artifact_adapter import ArtifactCheckAdapter
+from core.verification.adapters.base import BaseCheckAdapter, CheckExecutionContext
+from core.verification.adapters.command_adapter import CommandCheckAdapter
+from core.verification.adapters.file_adapter import FileCheckAdapter
+from core.verification.adapters.git_adapter import GitCheckAdapter
+from core.verification.engine import VerificationEngine
+from core.verification.model import (
+    SuccessCriterion,
+    Verification,
+    VerificationCheck,
+    VerificationPlan,
+    VerificationResult,
+)
+from core.verification.types import (
+    CheckStatus,
+    CheckType,
+    VerificationStatus,
+)
+
+from core.inference.gateway import CircuitBreaker, InferenceGateway
+from core.inference.model import (
+    Cost,
+    InferenceMessage,
+    InferenceRequest,
+    InferenceResponse,
+    ModelMetadata,
+    ModelRequirement,
+    RoutingCandidate,
+    RoutingDecision,
+    Usage,
+)
+from core.inference.omniroute import NoProviderAvailableError, OmniRoute
+from core.inference.provider import BaseInferenceProvider, MockProvider
+from core.inference.registry import (
+    ModelNotFoundError,
+    ModelRegistry,
+    ProviderNotFoundError,
+    ProviderRegistry,
+)
+from core.inference.secrets import EnvSecretStore, SecretStore, redact_secret_text
+from core.inference.types import (
+    CostType,
+    InferenceErrorCode,
+    InferenceRequestStatus,
+    ModelCapability,
+    ProviderHealthStatus,
+    RoutingProfile,
+)
+from core.manager import (
+    ActionResult,
+    AutonomyLevel,
+    ConfidenceLevel,
+    CycleResult,
+    ManagerAction,
+    ManagerActionType,
+    ManagerAgent,
+    ManagerConfig,
+    ManagerController,
+    ManagerDecision,
+    ManagerExecutionMode,
+    ManagerState,
+    ManagerStatus,
+    Plan,
+    PlanStatus,
+)
+from pkg.sdk import (
+    TaskContext,
+    Worker,
+    WorkerCapability,
+    WorkerConfig,
+    WorkerRequirement,
+    WorkerRuntimeContext,
+    WorkerTestHarness,
+)
+from workers.researcher import (
+    FactClassification,
+    ResearchConfidence,
+    ResearchContradiction,
+    ResearchFinding,
+    ResearchKnowledgeGap,
+    ResearchMode,
+    ResearchPlan,
+    ResearchPlanner,
+    ResearchQuestionStatus,
+    ResearchRecommendation,
+    ResearchReportGenerator,
+    ResearchResult,
+    ResearchScope,
+    ResearchTaskSpec,
+    ResearcherWorker,
+    Source,
+    SourceEvaluator,
+    SourceType,
+)
 
 __all__ = [
     "ArtifactType",
@@ -59,6 +208,7 @@ __all__ = [
     "ProjectStatus",
     "RiskLevel",
     "TaskStatus",
+    "ToolStatus",
     "WorkerStatus",
     "AutonomOSError",
     "ArtifactNotFoundError",
@@ -77,6 +227,14 @@ __all__ = [
     "TaskAlreadyAssignedError",
     "TaskAlreadyCompletedError",
     "TaskNotFoundError",
+    "ToolArgumentValidationError",
+    "ToolExecutionError",
+    "ToolNotFoundError",
+    "ToolOutputLimitError",
+    "ToolPermissionDeniedError",
+    "ToolTimeoutError",
+    "ToolUnavailableError",
+    "ToolWorkspaceViolationError",
     "WorkerAlreadyExistsError",
     "WorkerBusyError",
     "WorkerNotEligibleError",
@@ -103,4 +261,123 @@ __all__ = [
     "ReferenceIssue",
     "ValidationReport",
     "compute_checksum",
+    "ContextEngine",
+    "ContextBudget",
+    "ContextRequest",
+    "ContextItem",
+    "ContextWarning",
+    "ContextPackage",
+    "ContextSourceType",
+    "ContextPriority",
+    "ContextWarningType",
+    "RelevanceScorer",
+    "estimate_tokens",
+    "BaseTool",
+    "ToolDefinition",
+    "ToolRequest",
+    "ToolResult",
+    "ToolExecutionContext",
+    "ToolCategory",
+    "ToolRegistry",
+    "PermissionPolicy",
+    "ToolRuntime",
+    "SafetyAction",
+    "CheckpointType",
+    "CheckpointStatus",
+    "RollbackStatus",
+    "ScopeDeviationType",
+    "SafetyConfig",
+    "SafetyDecision",
+    "Checkpoint",
+    "ChangeRecord",
+    "ScopeDeviation",
+    "RollbackResult",
+    "CheckpointManager",
+    "compute_file_checksum",
+    "SafetyEvaluator",
+    "RollbackManager",
+    "ScopeTracker",
+    "CheckStatus",
+    "CheckType",
+    "VerificationStatus",
+    "SuccessCriterion",
+    "VerificationCheck",
+    "VerificationPlan",
+    "Verification",
+    "VerificationResult",
+    "BaseCheckAdapter",
+    "CheckExecutionContext",
+    "FileCheckAdapter",
+    "CommandCheckAdapter",
+    "GitCheckAdapter",
+    "ArtifactCheckAdapter",
+    "VerificationEngine",
+    "ModelCapability",
+    "ProviderHealthStatus",
+    "RoutingProfile",
+    "InferenceRequestStatus",
+    "CostType",
+    "InferenceErrorCode",
+    "Usage",
+    "Cost",
+    "ModelMetadata",
+    "ModelRequirement",
+    "InferenceMessage",
+    "InferenceRequest",
+    "InferenceResponse",
+    "RoutingCandidate",
+    "RoutingDecision",
+    "SecretStore",
+    "EnvSecretStore",
+    "redact_secret_text",
+    "BaseInferenceProvider",
+    "MockProvider",
+    "ProviderNotFoundError",
+    "ModelNotFoundError",
+    "ProviderRegistry",
+    "ModelRegistry",
+    "OmniRoute",
+    "NoProviderAvailableError",
+    "CircuitBreaker",
+    "InferenceGateway",
+    "Worker",
+    "WorkerRuntimeContext",
+    "WorkerCapability",
+    "WorkerRequirement",
+    "WorkerConfig",
+    "TaskContext",
+    "WorkerTestHarness",
+    "ManagerAgent",
+    "ManagerController",
+    "ManagerAction",
+    "ManagerDecision",
+    "Plan",
+    "ManagerState",
+    "ManagerConfig",
+    "ManagerStatus",
+    "ActionResult",
+    "CycleResult",
+    "AutonomyLevel",
+    "ManagerActionType",
+    "ConfidenceLevel",
+    "PlanStatus",
+    "ManagerExecutionMode",
+    "ResearcherWorker",
+    "SourceType",
+    "FactClassification",
+    "ResearchConfidence",
+    "ResearchMode",
+    "ResearchQuestionStatus",
+    "Source",
+    "ResearchFinding",
+    "ResearchContradiction",
+    "ResearchKnowledgeGap",
+    "ResearchRecommendation",
+    "ResearchScope",
+    "ResearchTaskSpec",
+    "ResearchPlan",
+    "ResearchResult",
+    "ResearchPlanner",
+    "SourceEvaluator",
+    "ResearchReportGenerator",
 ]

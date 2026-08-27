@@ -194,6 +194,46 @@ class SQLiteStore(Store):
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_task ON memory_documents(related_task_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_memory_path ON memory_documents(project_id, relative_path);")
 
+            # Plans table (Stage 10)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS plans (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    objective TEXT NOT NULL,
+                    tasks TEXT NOT NULL,
+                    milestones TEXT NOT NULL,
+                    dependencies TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_plans_project ON plans(project_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_plans_status ON plans(status);")
+
+            # Manager Decisions table (Stage 10)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS manager_decisions (
+                    decision_id TEXT PRIMARY KEY,
+                    cycle_id TEXT NOT NULL,
+                    project_id TEXT NOT NULL,
+                    reasoning_summary TEXT NOT NULL,
+                    actions TEXT NOT NULL,
+                    assumptions TEXT NOT NULL,
+                    risks TEXT NOT NULL,
+                    confidence_level TEXT NOT NULL,
+                    plan_update TEXT,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_project ON manager_decisions(project_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_cycle ON manager_decisions(cycle_id);")
+
     # Project Operations
     def save_project(self, project: Project) -> None:
         with self._lock:
@@ -896,6 +936,171 @@ class SQLiteStore(Store):
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )
+
+    # Manager Plan & Decision Operations (Stage 10)
+    def save_plan(self, plan: "Plan") -> None:
+        from core.manager.model import Plan
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO plans (id, project_id, objective, tasks, milestones, dependencies, status, version, created_at, updated_at, metadata)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        objective = excluded.objective,
+                        tasks = excluded.tasks,
+                        milestones = excluded.milestones,
+                        dependencies = excluded.dependencies,
+                        status = excluded.status,
+                        version = excluded.version,
+                        updated_at = excluded.updated_at,
+                        metadata = excluded.metadata;
+                """, (
+                    plan.id,
+                    plan.project_id,
+                    plan.objective,
+                    json.dumps(plan.tasks),
+                    json.dumps(plan.milestones),
+                    json.dumps(plan.dependencies),
+                    plan.status.value if hasattr(plan.status, "value") else str(plan.status),
+                    plan.version,
+                    plan.created_at,
+                    plan.updated_at,
+                    json.dumps(plan.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_plan", str(e)) from e
+
+    def get_plan(self, plan_id: str) -> Optional["Plan"]:
+        from core.manager.model import Plan
+        from core.manager.types import PlanStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM plans WHERE id = ?;", (plan_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return Plan(
+                id=row["id"],
+                project_id=row["project_id"],
+                objective=row["objective"],
+                tasks=json.loads(row["tasks"]),
+                milestones=json.loads(row["milestones"]),
+                dependencies=json.loads(row["dependencies"]),
+                status=PlanStatus(row["status"]),
+                version=row["version"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                metadata=json.loads(row["metadata"]),
+            )
+
+    def list_plans_for_project(self, project_id: str) -> list["Plan"]:
+        from core.manager.model import Plan
+        from core.manager.types import PlanStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM plans WHERE project_id = ? ORDER BY version ASC;", (project_id,))
+            rows = cursor.fetchall()
+            return [
+                Plan(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    objective=row["objective"],
+                    tasks=json.loads(row["tasks"]),
+                    milestones=json.loads(row["milestones"]),
+                    dependencies=json.loads(row["dependencies"]),
+                    status=PlanStatus(row["status"]),
+                    version=row["version"],
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    def save_manager_decision(self, decision: "ManagerDecision") -> None:
+        from core.manager.model import ManagerDecision
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO manager_decisions (decision_id, cycle_id, project_id, reasoning_summary, actions, assumptions, risks, confidence_level, plan_update, metadata, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(decision_id) DO UPDATE SET
+                        reasoning_summary = excluded.reasoning_summary,
+                        actions = excluded.actions,
+                        assumptions = excluded.assumptions,
+                        risks = excluded.risks,
+                        confidence_level = excluded.confidence_level,
+                        plan_update = excluded.plan_update,
+                        metadata = excluded.metadata;
+                """, (
+                    decision.decision_id,
+                    decision.cycle_id,
+                    decision.project_id,
+                    decision.reasoning_summary,
+                    json.dumps([a.to_dict() if hasattr(a, "to_dict") else a for a in decision.actions]),
+                    json.dumps(decision.assumptions),
+                    json.dumps(decision.risks),
+                    decision.confidence_level.value if hasattr(decision.confidence_level, "value") else str(decision.confidence_level),
+                    json.dumps(decision.plan_update) if decision.plan_update else None,
+                    json.dumps(decision.metadata),
+                    decision.created_at,
+                ))
+            except Exception as e:
+                raise PersistenceError("save_manager_decision", str(e)) from e
+
+    def get_manager_decision(self, decision_id: str) -> Optional["ManagerDecision"]:
+        from core.manager.model import ManagerAction, ManagerDecision
+        from core.manager.types import ConfidenceLevel
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM manager_decisions WHERE decision_id = ?;", (decision_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ManagerDecision(
+                decision_id=row["decision_id"],
+                cycle_id=row["cycle_id"],
+                project_id=row["project_id"],
+                reasoning_summary=row["reasoning_summary"],
+                actions=[ManagerAction.from_dict(a) for a in json.loads(row["actions"])],
+                assumptions=json.loads(row["assumptions"]),
+                risks=json.loads(row["risks"]),
+                confidence_level=ConfidenceLevel(row["confidence_level"]),
+                plan_update=json.loads(row["plan_update"]) if row["plan_update"] else None,
+                metadata=json.loads(row["metadata"]),
+                created_at=row["created_at"],
+            )
+
+    def list_manager_decisions_for_project(self, project_id: str, limit: Optional[int] = None) -> list["ManagerDecision"]:
+        from core.manager.model import ManagerAction, ManagerDecision
+        from core.manager.types import ConfidenceLevel
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM manager_decisions WHERE project_id = ? ORDER BY created_at ASC"
+            params = [project_id]
+            if limit:
+                query += " LIMIT ?"
+                params.append(limit)
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                ManagerDecision(
+                    decision_id=row["decision_id"],
+                    cycle_id=row["cycle_id"],
+                    project_id=row["project_id"],
+                    reasoning_summary=row["reasoning_summary"],
+                    actions=[ManagerAction.from_dict(a) for a in json.loads(row["actions"])],
+                    assumptions=json.loads(row["assumptions"]),
+                    risks=json.loads(row["risks"]),
+                    confidence_level=ConfidenceLevel(row["confidence_level"]),
+                    plan_update=json.loads(row["plan_update"]) if row["plan_update"] else None,
+                    metadata=json.loads(row["metadata"]),
+                    created_at=row["created_at"],
+                )
+                for row in rows
+            ]
 
     def close(self) -> None:
         with self._lock:

@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import Any, Optional
 
 from core.enums import MemoryType, TaskStatus, WorkerStatus
 from core.events.model import Event
@@ -171,7 +171,7 @@ class Store(ABC):
         """Reconstruct the causal lineage of events leading up to this event."""
         pass
 
-    # Memory Store Operations (Stage 3)
+    # Memory Operations (Stage 3)
     @abstractmethod
     def save_memory_document(self, doc: MemoryDocument) -> None:
         """Persist or update a memory document record."""
@@ -201,6 +201,37 @@ class Store(ABC):
     @abstractmethod
     def delete_memory_document(self, memory_id: str) -> bool:
         """Delete a memory document record."""
+        pass
+
+    # Manager Plan & Decision Operations (Stage 10)
+    @abstractmethod
+    def save_plan(self, plan: Any) -> None:
+        """Persist or update a project plan."""
+        pass
+
+    @abstractmethod
+    def get_plan(self, plan_id: str) -> Optional[Any]:
+        """Retrieve a plan by ID."""
+        pass
+
+    @abstractmethod
+    def list_plans_for_project(self, project_id: str) -> list[Any]:
+        """List all plans for a project in chronological order."""
+        pass
+
+    @abstractmethod
+    def save_manager_decision(self, decision: Any) -> None:
+        """Persist a ManagerDecision record."""
+        pass
+
+    @abstractmethod
+    def get_manager_decision(self, decision_id: str) -> Optional[Any]:
+        """Retrieve a ManagerDecision by ID."""
+        pass
+
+    @abstractmethod
+    def list_manager_decisions_for_project(self, project_id: str, limit: Optional[int] = None) -> list[Any]:
+        """List recorded ManagerDecisions for a project."""
         pass
 
     # Lifecycle

@@ -208,3 +208,76 @@ class MemoryConflictError(AutonomOSError):
             code="MEMORY_CONFLICT",
             details={"memory_id": memory_id, "current_version": current_version, "expected_version": expected_version},
         )
+
+
+# Tool Errors (Stage 5)
+class ToolNotFoundError(AutonomOSError):
+    def __init__(self, tool_id: str):
+        super().__init__(
+            f"Tool with ID '{tool_id}' not found in registry.",
+            code="TOOL_NOT_FOUND",
+            details={"tool_id": tool_id},
+        )
+
+
+class ToolPermissionDeniedError(AutonomOSError):
+    def __init__(self, worker_id: str, tool_id: str, required_permissions: list[str]):
+        super().__init__(
+            f"Permission denied for worker '{worker_id}' to execute tool '{tool_id}'. Required: {required_permissions}",
+            code="TOOL_PERMISSION_DENIED",
+            details={"worker_id": worker_id, "tool_id": tool_id, "required_permissions": required_permissions},
+        )
+
+
+class ToolArgumentValidationError(AutonomOSError):
+    def __init__(self, tool_id: str, errors: list[str]):
+        super().__init__(
+            f"Argument validation failed for tool '{tool_id}': {errors}",
+            code="TOOL_ARGUMENT_VALIDATION_ERROR",
+            details={"tool_id": tool_id, "errors": errors},
+        )
+
+
+class ToolExecutionError(AutonomOSError):
+    def __init__(self, tool_id: str, message: str, exit_code: Optional[int] = None):
+        super().__init__(
+            f"Execution of tool '{tool_id}' failed: {message}",
+            code="TOOL_EXECUTION_ERROR",
+            details={"tool_id": tool_id, "exit_code": exit_code, "cause": message},
+        )
+
+
+class ToolTimeoutError(AutonomOSError):
+    def __init__(self, tool_id: str, timeout_seconds: int):
+        super().__init__(
+            f"Tool '{tool_id}' timed out after {timeout_seconds} seconds.",
+            code="TOOL_TIMEOUT",
+            details={"tool_id": tool_id, "timeout_seconds": timeout_seconds},
+        )
+
+
+class ToolWorkspaceViolationError(AutonomOSError):
+    def __init__(self, attempted_path: str, workspace_root: str):
+        super().__init__(
+            f"Security violation: Attempted path '{attempted_path}' escapes workspace boundary '{workspace_root}'.",
+            code="TOOL_WORKSPACE_VIOLATION",
+            details={"attempted_path": attempted_path, "workspace_root": workspace_root},
+        )
+
+
+class ToolOutputLimitError(AutonomOSError):
+    def __init__(self, tool_id: str, output_size: int, limit_size: int):
+        super().__init__(
+            f"Tool '{tool_id}' exceeded output size limit: {output_size} bytes (Limit: {limit_size} bytes).",
+            code="TOOL_OUTPUT_LIMIT_EXCEEDED",
+            details={"tool_id": tool_id, "output_size": output_size, "limit_size": limit_size},
+        )
+
+
+class ToolUnavailableError(AutonomOSError):
+    def __init__(self, tool_id: str, reason: str):
+        super().__init__(
+            f"Tool '{tool_id}' is currently unavailable: {reason}",
+            code="TOOL_UNAVAILABLE",
+            details={"tool_id": tool_id, "reason": reason},
+        )

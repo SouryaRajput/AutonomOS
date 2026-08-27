@@ -1,43 +1,41 @@
 from typing import Optional
 
-from core.enums import ArtifactType, WorkerStatus
+from core.enums import ArtifactType
 from core.errors import WorkerNotEligibleError
-from core.models import Evidence, Task, WorkerManifest, WorkerOutput
+from core.models import Task, WorkerManifest, WorkerOutput, utc_now
 from pkg.sdk.worker import Worker, WorkerRuntimeContext
 
 
 class DummyWorker(Worker):
     """
-    Minimal, deterministic test worker used to verify the Stage 1 runtime.
-    Does not make LLM calls or network requests.
+    Deterministic reference worker implementation for runtime validation, testing, and golden-path verification.
     """
 
     def __init__(
         self,
-        worker_id: str = "worker.dummy",
+        worker_id: str = "worker.dummy.1",
         name: str = "Dummy Test Worker",
-        role: str = "Runtime Verification & Simulation",
+        description: str = "Deterministic test worker implementation",
+        capabilities: Optional[list[str]] = None,
+        permissions: Optional[list[str]] = None,
+        artifact_filename: str = "dummy_output.txt",
+        artifact_content: str = "This is a deterministic test artifact content.",
         should_fail: bool = False,
         failure_message: str = "Simulated worker execution failure.",
-        artifact_filename: str = "hello.txt",
-        artifact_content: str = "Hello from AutonomOS DummyWorker!\nTask executed successfully.",
     ):
         self._manifest = WorkerManifest(
             id=worker_id,
             name=name,
-            role=role,
-            description="Deterministic dummy worker for testing runtime orchestration without LLM.",
-            version="1.0.0",
-            capabilities=["simulation", "placeholder_generation"],
-            permissions=["filesystem.write", "filesystem.read"],
-            tools=["filesystem.write"],
-            model_policy={"model_type": "deterministic_dummy"},
-            status=WorkerStatus.IDLE,
+            role="Tester",
+            description=description,
+            capabilities=capabilities or ["simulation", "test.dummy", "filesystem.read", "filesystem.write", "tool.execute"],
+            permissions=permissions or ["*"],
+            created_at=utc_now(),
         )
-        self.should_fail = should_fail
-        self.failure_message = failure_message
         self.artifact_filename = artifact_filename
         self.artifact_content = artifact_content
+        self.should_fail = should_fail
+        self.failure_message = failure_message
 
     def get_manifest(self) -> WorkerManifest:
         return self._manifest
@@ -50,6 +48,20 @@ class DummyWorker(Worker):
     def execute_task(self, context: WorkerRuntimeContext, task: Task) -> WorkerOutput:
         context.log_event("DUMMY_WORK_STARTED", {"task_id": task.id, "title": task.title})
 
+        # 1. Request bounded context package via Context Engine (Stage 4)
+        ctx_package = context.get_context()
+        context.log_event("DUMMY_CONTEXT_RECEIVED", {"items_count": len(ctx_package.items), "tokens": ctx_package.total_estimated_tokens})
+
+        # 2. Discover available tools & Execute tool via Tool Runtime (Stage 5)
+        tools = context.list_available_tools()
+        context.log_event("DUMMY_TOOLS_DISCOVERED", {"tools_count": len(tools)})
+
+        tool_result = context.execute_tool(
+            tool_id="filesystem.write_file",
+            arguments={"path": self.artifact_filename, "content": self.artifact_content},
+        )
+        context.log_event("DUMMY_TOOL_EXECUTED", {"status": tool_result.status.value, "tool_id": tool_result.tool_id})
+
         if self.should_fail:
             context.log_event("DUMMY_WORK_FAILED", {"reason": self.failure_message})
             return WorkerOutput(
@@ -58,7 +70,7 @@ class DummyWorker(Worker):
                 error_message=self.failure_message,
             )
 
-        # 1. Create a simulated artifact
+        # 3. Create a registered artifact
         artifact = context.create_artifact(
             artifact_type=ArtifactType.FILE,
             relative_path=self.artifact_filename,
@@ -67,13 +79,13 @@ class DummyWorker(Worker):
             metadata={"generator": self._manifest.id, "task_id": task.id},
         )
 
-        # 2. Record simulated deterministic evidence
+        # 4. Record simulated deterministic evidence
         evidence = context.record_evidence(
             evidence_type="DETERMINISTIC_EXECUTION_RECEIPT",
             data=f"Task '{task.id}' executed with exit_code=0; produced artifact '{artifact.id}'",
         )
 
-        # 3. Emit progress event
+        # 5. Emit progress event
         context.log_event("DUMMY_WORK_COMPLETED", {"artifact_id": artifact.id, "evidence_id": evidence.id})
 
         return WorkerOutput(

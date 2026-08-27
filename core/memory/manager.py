@@ -191,6 +191,8 @@ class MemoryManager:
             related_task_id=related_task_id,
         )
 
+    list_memories = list_memory
+
     def exists(self, project_id: str, memory_id: str) -> bool:
         doc = self.store.get_memory_document(memory_id)
         return doc is not None and doc.project_id == project_id

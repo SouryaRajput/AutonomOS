@@ -1,4 +1,63 @@
-"""Worker SDK Package."""
+"""AutonomOS Universal Worker SDK Package."""
+from pkg.sdk.errors import (
+    WorkerArtifactError,
+    WorkerCancelledError,
+    WorkerConfigurationError,
+    WorkerContextError,
+    WorkerExecutionError,
+    WorkerInferenceError,
+    WorkerMemoryError,
+    WorkerSDKError,
+    WorkerTimeoutError,
+    WorkerToolError,
+    WorkerVerificationError,
+)
+from pkg.sdk.harness import WorkerTestHarness
+from pkg.sdk.subclients import (
+    ArtifactClient,
+    CancellationClient,
+    ContextClient,
+    EventClient,
+    InferenceClient,
+    LoggerClient,
+    MemoryClient,
+    ProgressClient,
+    SafetyClient,
+    TaskContext,
+    ToolClient,
+    VerificationClient,
+)
+from pkg.sdk.types import WorkerCapability, WorkerConfig, WorkerRequirement
 from pkg.sdk.worker import Worker, WorkerRuntimeContext
 
-__all__ = ["Worker", "WorkerRuntimeContext"]
+__all__ = [
+    "Worker",
+    "WorkerRuntimeContext",
+    "WorkerCapability",
+    "WorkerRequirement",
+    "WorkerConfig",
+    "TaskContext",
+    "ContextClient",
+    "ToolClient",
+    "InferenceClient",
+    "MemoryClient",
+    "ArtifactClient",
+    "VerificationClient",
+    "SafetyClient",
+    "EventClient",
+    "LoggerClient",
+    "ProgressClient",
+    "CancellationClient",
+    "WorkerTestHarness",
+    "WorkerSDKError",
+    "WorkerExecutionError",
+    "WorkerConfigurationError",
+    "WorkerContextError",
+    "WorkerToolError",
+    "WorkerInferenceError",
+    "WorkerMemoryError",
+    "WorkerArtifactError",
+    "WorkerVerificationError",
+    "WorkerCancelledError",
+    "WorkerTimeoutError",
+]

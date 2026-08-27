@@ -132,6 +132,7 @@ class Task:
     artifacts: list[str] = field(default_factory=list)  # list of artifact IDs
     attempts: int = 0
     max_attempts: int = 3
+    metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now)
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -153,6 +154,7 @@ class Task:
             "artifacts": self.artifacts,
             "attempts": self.attempts,
             "max_attempts": self.max_attempts,
+            "metadata": self.metadata,
             "created_at": self.created_at,
             "started_at": self.started_at,
             "completed_at": self.completed_at,
@@ -176,6 +178,7 @@ class Task:
             artifacts=list(data.get("artifacts", [])),
             attempts=data.get("attempts", 0),
             max_attempts=data.get("max_attempts", 3),
+            metadata=dict(data.get("metadata", {})),
             created_at=data.get("created_at", utc_now()),
             started_at=data.get("started_at"),
             completed_at=data.get("completed_at"),
