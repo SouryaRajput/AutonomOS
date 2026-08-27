@@ -40,6 +40,7 @@ class TaskEngine:
         context_references: Optional[list[dict[str, Any]]] = None,
         max_attempts: int = 3,
         task_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Task:
         # Validate project exists
         project = self.store.get_project(project_id)
@@ -74,6 +75,7 @@ class TaskEngine:
             artifacts=[],
             attempts=0,
             max_attempts=max_attempts,
+            metadata=metadata or {},
             created_at=utc_now(),
         )
 

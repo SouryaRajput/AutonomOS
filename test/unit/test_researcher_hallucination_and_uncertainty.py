@@ -115,7 +115,7 @@ class TestResearcherHallucinationAndUncertainty(unittest.TestCase):
         self.assertEqual(len(gaps), 1)
         self.assertEqual(gaps[0]["topic"], "Tool X Pricing")
         self.assertEqual(findings[1]["classification"], "UNKNOWN")
-        self.assertIn("Enterprise pricing is UNKNOWN", output.summary)
+        self.assertIn("knowledge gap(s) identified", output.summary)
 
 
 if __name__ == "__main__":

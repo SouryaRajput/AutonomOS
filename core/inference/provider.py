@@ -112,6 +112,7 @@ class MockProvider(BaseInferenceProvider):
                     ModelCapability.TEXT_GENERATION,
                     ModelCapability.CODE_GENERATION,
                     ModelCapability.REASONING,
+                    ModelCapability.STRUCTURED_OUTPUT,
                     ModelCapability.LONG_CONTEXT,
                     ModelCapability.TOOL_CALLING,
                 },
@@ -186,6 +187,10 @@ class MockProvider(BaseInferenceProvider):
             latency_ms=self.latency_ms,
             metadata={"call_count": self.call_count},
         )
+
+    def set_custom_response(self, response: Any) -> None:
+        """Set a canned response or callback handler."""
+        self.custom_response = response
 
     def health(self) -> ProviderHealthStatus:
         return self._health_status

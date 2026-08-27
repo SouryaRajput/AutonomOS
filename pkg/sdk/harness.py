@@ -39,8 +39,18 @@ class _FakeToolClient(ToolClient):
         if tool_id in self._harness._tool_mocks:
             handler_or_res = self._harness._tool_mocks[tool_id]
             if callable(handler_or_res):
-                return handler_or_res(arguments)
-            return handler_or_res
+                res = handler_or_res(arguments)
+            else:
+                res = handler_or_res
+            if isinstance(res, ToolResult):
+                return res
+            return ToolResult(
+                result_id=f"res-{uuid.uuid4().hex[:6]}",
+                request_id=f"req-{uuid.uuid4().hex[:6]}",
+                tool_id=tool_id,
+                status=ToolStatus.SUCCESS,
+                output=res,
+            )
         return ToolResult(
             result_id=f"res-{uuid.uuid4().hex[:6]}",
             request_id=f"req-{uuid.uuid4().hex[:6]}",
@@ -89,17 +99,29 @@ class _FakeInferenceClient(InferenceClient):
     ) -> InferenceResponse:
         self._harness.inference_requests.append({"messages": messages, "requirements": requirements})
         if self._harness._mock_inference_response:
-            if isinstance(self._harness._mock_inference_response, str):
+            resp_val = self._harness._mock_inference_response
+            if callable(resp_val):
+                req_obj = InferenceRequest(
+                    request_id=f"req-mock-{uuid.uuid4().hex[:6]}",
+                    project_id=self._harness.project_id,
+                    task_id=self._harness.task.id,
+                    worker_id=self._harness.worker_id,
+                    messages=messages,
+                    requirements=requirements or ModelRequirement(),
+                )
+                resp_val = resp_val(req_obj)
+
+            if isinstance(resp_val, str):
                 return InferenceResponse(
                     request_id=f"req-mock-{uuid.uuid4().hex[:6]}",
                     response_id=f"resp-mock-{uuid.uuid4().hex[:6]}",
-                    content=self._harness._mock_inference_response,
+                    content=resp_val,
                     model_used="mock-harness-model",
                     provider_used="mock-harness",
                     usage=Usage(input_tokens=10, output_tokens=20, total_tokens=30),
                     cost=Cost(total_cost=0.0, cost_type=CostType.ESTIMATED),
                 )
-            return self._harness._mock_inference_response
+            return resp_val
         return InferenceResponse(
             request_id=f"req-mock-{uuid.uuid4().hex[:6]}",
             response_id=f"resp-mock-{uuid.uuid4().hex[:6]}",
@@ -116,7 +138,13 @@ class _FakeMemoryClient(MemoryClient):
         self._harness = harness
 
     def read(self, relative_path_or_id: str) -> Optional[MemoryDocument]:
-        return self._harness._mock_memory.get(relative_path_or_id)
+        if relative_path_or_id in self._harness._mock_memory:
+            return self._harness._mock_memory[relative_path_or_id]
+        clean = relative_path_or_id.lstrip("/").replace(".autonomos/memory/", "")
+        for k, v in self._harness._mock_memory.items():
+            if k == clean or k.endswith(clean) or v.relative_path.endswith(clean):
+                return v
+        return None
 
     def record_decision(self, title: str, context: str, decision: str, reasoning: str, consequences: str, **kwargs) -> MemoryDocument:
         doc = MemoryDocument(
@@ -347,8 +375,8 @@ class WorkerTestHarness:
         """Provide a canned ContextPackage for context requests."""
         self._mock_context = package
 
-    def set_inference_response(self, response: InferenceResponse | str) -> None:
-        """Provide a canned inference response."""
+    def set_inference_response(self, response: InferenceResponse | str | Any) -> None:
+        """Provide a canned inference response or callback."""
         self._mock_inference_response = response
 
     def set_memory_document(self, doc: MemoryDocument) -> None:
@@ -359,6 +387,16 @@ class WorkerTestHarness:
     def set_verification_result(self, result: VerificationResult) -> None:
         """Set canned verification result."""
         self._mock_verification_result = result
+
+    mock_context = set_context_response
+    mock_inference = set_inference_response
+    mock_memory_document = set_memory_document
+    mock_verification = set_verification_result
+
+    @property
+    def context(self) -> WorkerRuntimeContext:
+        """Return a live WorkerRuntimeContext connected to this harness."""
+        return _HarnessWorkerRuntimeContext(self)
 
     def cancel_task(self) -> None:
         """Mark task as cancelled."""

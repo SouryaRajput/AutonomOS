@@ -281,3 +281,12 @@ class ToolUnavailableError(AutonomOSError):
             code="TOOL_UNAVAILABLE",
             details={"tool_id": tool_id, "reason": reason},
         )
+
+
+class ValidationError(AutonomOSError):
+    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+        super().__init__(
+            message,
+            code="VALIDATION_ERROR",
+            details=details or {},
+        )

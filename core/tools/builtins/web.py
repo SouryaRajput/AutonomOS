@@ -29,8 +29,12 @@ class MockWebAdapter(WebAdapter):
         self.mock_data = mock_data or {}
 
     def search(self, query: str, limit: int = 5) -> list[dict[str, Any]]:
+        clean_q = query.lower().strip()
         if query in self.mock_data:
             return self.mock_data[query][:limit]
+        for k, v in self.mock_data.items():
+            if isinstance(v, list) and (k.lower() in clean_q or clean_q in k.lower()):
+                return v[:limit]
         return [
             {
                 "title": f"Result for '{query}' - Documentation",

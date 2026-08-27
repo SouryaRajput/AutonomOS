@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -288,3 +290,28 @@ class WorkerOutput:
     created_artifacts: list[dict[str, Any]] = field(default_factory=list)  # list of artifact descriptors to register
     evidence_list: list[Evidence] = field(default_factory=list)
     error_message: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "success": self.success,
+            "summary": self.summary,
+            "report_markdown": self.report_markdown,
+            "created_artifacts": self.created_artifacts,
+            "evidence_list": [e.to_dict() for e in self.evidence_list],
+            "error_message": self.error_message,
+            "metadata": self.metadata,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WorkerOutput:
+        evs = [Evidence.from_dict(e) if isinstance(e, dict) else e for e in data.get("evidence_list", [])]
+        return cls(
+            success=bool(data.get("success", False)),
+            summary=str(data.get("summary", "")),
+            report_markdown=str(data.get("report_markdown", "")),
+            created_artifacts=list(data.get("created_artifacts", [])),
+            evidence_list=evs,
+            error_message=data.get("error_message"),
+            metadata=dict(data.get("metadata", {})),
+        )

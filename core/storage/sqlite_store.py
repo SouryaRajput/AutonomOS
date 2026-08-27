@@ -90,6 +90,7 @@ class SQLiteStore(Store):
                     artifacts TEXT NOT NULL,
                     attempts INTEGER NOT NULL,
                     max_attempts INTEGER NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
                     created_at TEXT NOT NULL,
                     started_at TEXT,
                     completed_at TEXT,
@@ -233,6 +234,159 @@ class SQLiteStore(Store):
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_project ON manager_decisions(project_id);")
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_cycle ON manager_decisions(cycle_id);")
+
+            # Workflows table (Stage 14)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS workflows (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    objective TEXT NOT NULL,
+                    root_task_id TEXT,
+                    status TEXT NOT NULL,
+                    priority TEXT NOT NULL,
+                    tasks TEXT NOT NULL,
+                    current_step INTEGER NOT NULL DEFAULT 0,
+                    budget TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_workflows_project ON workflows(project_id);")
+
+            # Worker Handoffs table (Stage 14)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS worker_handoffs (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    source_worker TEXT NOT NULL,
+                    source_task_id TEXT NOT NULL,
+                    destination_worker TEXT,
+                    destination_task_id TEXT,
+                    handoff_type TEXT NOT NULL,
+                    artifacts TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    summary TEXT NOT NULL,
+                    requirements TEXT NOT NULL,
+                    warnings TEXT NOT NULL,
+                    workflow_id TEXT,
+                    created_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_handoffs_workflow ON worker_handoffs(workflow_id);")
+
+            # Execution Attempts table (Stage 14)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS execution_attempts (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    attempt_number INTEGER NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    worker_version TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    workflow_id TEXT,
+                    error_message TEXT,
+                    duration_ms REAL NOT NULL DEFAULT 0.0,
+                    started_at TEXT NOT NULL,
+                    completed_at TEXT,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (task_id) REFERENCES tasks(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_attempts_task ON execution_attempts(task_id);")
+
+            # Autonomy Policies table (Stage 15)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS autonomy_policies (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT UNIQUE NOT NULL,
+                    autonomy_level TEXT NOT NULL,
+                    allowed_tools TEXT NOT NULL,
+                    denied_tools TEXT NOT NULL,
+                    approval_required_actions TEXT NOT NULL,
+                    max_cost_limit REAL NOT NULL,
+                    max_iterations INTEGER NOT NULL,
+                    max_external_actions_per_hour INTEGER NOT NULL,
+                    version INTEGER NOT NULL DEFAULT 1,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_autonomy_project ON autonomy_policies(project_id);")
+
+            # Approval Requests table (Stage 15)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS approval_requests (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    workflow_id TEXT,
+                    task_id TEXT NOT NULL,
+                    worker_id TEXT NOT NULL,
+                    action TEXT NOT NULL,
+                    category TEXT NOT NULL,
+                    risk_level TEXT NOT NULL,
+                    reason TEXT NOT NULL,
+                    requested_scope TEXT NOT NULL,
+                    affected_resources TEXT NOT NULL,
+                    evidence TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    expires_at TEXT,
+                    decided_at TEXT,
+                    decided_by TEXT,
+                    rejection_reason TEXT,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_approvals_project ON approval_requests(project_id);")
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_approvals_status ON approval_requests(status);")
+
+            # User Input Requests table (Stage 15)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS user_input_requests (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    workflow_id TEXT,
+                    task_id TEXT NOT NULL,
+                    question TEXT NOT NULL,
+                    context TEXT NOT NULL,
+                    answer TEXT,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    answered_at TEXT,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_user_inputs_project ON user_input_requests(project_id);")
+
+            # Decision Requests table (Stage 15)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS decision_requests (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    workflow_id TEXT,
+                    task_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    options TEXT NOT NULL,
+                    chosen_option TEXT,
+                    rationale TEXT NOT NULL,
+                    status TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    decided_at TEXT,
+                    metadata TEXT NOT NULL,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_req_project ON decision_requests(project_id);")
 
     # Project Operations
     def save_project(self, project: Project) -> None:
@@ -424,9 +578,9 @@ class SQLiteStore(Store):
                     INSERT INTO tasks (
                         id, project_id, parent_task_id, title, objective, status, priority, risk,
                         assigned_worker, dependencies, success_criteria, context_references, artifacts,
-                        attempts, max_attempts, created_at, started_at, completed_at
+                        attempts, max_attempts, metadata, created_at, started_at, completed_at
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ON CONFLICT(id) DO UPDATE SET
                         parent_task_id = excluded.parent_task_id,
                         title = excluded.title,
@@ -441,6 +595,7 @@ class SQLiteStore(Store):
                         artifacts = excluded.artifacts,
                         attempts = excluded.attempts,
                         max_attempts = excluded.max_attempts,
+                        metadata = excluded.metadata,
                         started_at = excluded.started_at,
                         completed_at = excluded.completed_at;
                 """, (
@@ -459,6 +614,7 @@ class SQLiteStore(Store):
                     json.dumps(task.artifacts),
                     task.attempts,
                     task.max_attempts,
+                    json.dumps(task.metadata or {}),
                     task.created_at,
                     task.started_at,
                     task.completed_at,
@@ -509,6 +665,12 @@ class SQLiteStore(Store):
                 raise PersistenceError("delete_task", str(e)) from e
 
     def _row_to_task(self, row: sqlite3.Row) -> Task:
+        raw_meta = row["metadata"] if "metadata" in row.keys() and row["metadata"] else "{}"
+        try:
+            meta_dict = json.loads(raw_meta)
+        except Exception:
+            meta_dict = {}
+
         return Task(
             id=row["id"],
             project_id=row["project_id"],
@@ -525,6 +687,7 @@ class SQLiteStore(Store):
             artifacts=json.loads(row["artifacts"]),
             attempts=row["attempts"],
             max_attempts=row["max_attempts"],
+            metadata=meta_dict,
             created_at=row["created_at"],
             started_at=row["started_at"],
             completed_at=row["completed_at"],
@@ -1101,6 +1264,531 @@ class SQLiteStore(Store):
                 )
                 for row in rows
             ]
+
+    # Stage 14: Workflow Operations
+    def save_workflow(self, workflow: "WorkforceWorkflow") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO workflows (
+                        id, project_id, title, objective, root_task_id, status, priority,
+                        tasks, current_step, budget, metadata, created_at, updated_at, completed_at
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        objective = excluded.objective,
+                        root_task_id = excluded.root_task_id,
+                        status = excluded.status,
+                        priority = excluded.priority,
+                        tasks = excluded.tasks,
+                        current_step = excluded.current_step,
+                        budget = excluded.budget,
+                        metadata = excluded.metadata,
+                        updated_at = excluded.updated_at,
+                        completed_at = excluded.completed_at;
+                """, (
+                    workflow.id,
+                    workflow.project_id,
+                    workflow.title,
+                    workflow.objective,
+                    workflow.root_task_id,
+                    workflow.status.value if hasattr(workflow.status, "value") else workflow.status,
+                    workflow.priority.value if hasattr(workflow.priority, "value") else workflow.priority,
+                    json.dumps(workflow.tasks),
+                    workflow.current_step,
+                    json.dumps(workflow.budget.to_dict()),
+                    json.dumps(workflow.metadata),
+                    workflow.created_at,
+                    workflow.updated_at,
+                    workflow.completed_at,
+                ))
+            except Exception as e:
+                raise PersistenceError("save_workflow", str(e)) from e
+
+    def get_workflow(self, workflow_id: str) -> Optional["WorkforceWorkflow"]:
+        from core.workflow.model import WorkforceWorkflow, WorkflowBudget
+        from core.workflow.types import WorkflowPriority, WorkflowStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM workflows WHERE id = ?;", (workflow_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return WorkforceWorkflow(
+                id=row["id"],
+                project_id=row["project_id"],
+                title=row["title"],
+                objective=row["objective"],
+                root_task_id=row["root_task_id"],
+                status=WorkflowStatus(row["status"]),
+                priority=WorkflowPriority(row["priority"]),
+                tasks=json.loads(row["tasks"]),
+                current_step=row["current_step"],
+                budget=WorkflowBudget.from_dict(json.loads(row["budget"])),
+                metadata=json.loads(row["metadata"]),
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                completed_at=row["completed_at"],
+            )
+
+    def list_workflows(self, project_id: Optional[str] = None) -> list["WorkforceWorkflow"]:
+        from core.workflow.model import WorkforceWorkflow, WorkflowBudget
+        from core.workflow.types import WorkflowPriority, WorkflowStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM workflows"
+            params = []
+            if project_id:
+                query += " WHERE project_id = ?"
+                params.append(project_id)
+            query += " ORDER BY created_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                WorkforceWorkflow(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    title=row["title"],
+                    objective=row["objective"],
+                    root_task_id=row["root_task_id"],
+                    status=WorkflowStatus(row["status"]),
+                    priority=WorkflowPriority(row["priority"]),
+                    tasks=json.loads(row["tasks"]),
+                    current_step=row["current_step"],
+                    budget=WorkflowBudget.from_dict(json.loads(row["budget"])),
+                    metadata=json.loads(row["metadata"]),
+                    created_at=row["created_at"],
+                    updated_at=row["updated_at"],
+                    completed_at=row["completed_at"],
+                )
+                for row in rows
+            ]
+
+    # Stage 14: Worker Handoffs
+    def save_worker_handoff(self, handoff: "WorkerHandoff") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO worker_handoffs (
+                        id, project_id, source_worker, source_task_id, destination_worker,
+                        destination_task_id, handoff_type, artifacts, evidence, summary,
+                        requirements, warnings, workflow_id, created_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        destination_worker = excluded.destination_worker,
+                        destination_task_id = excluded.destination_task_id,
+                        summary = excluded.summary,
+                        metadata = excluded.metadata;
+                """, (
+                    handoff.id,
+                    handoff.project_id,
+                    handoff.source_worker,
+                    handoff.source_task_id,
+                    handoff.destination_worker,
+                    handoff.destination_task_id,
+                    handoff.handoff_type.value if hasattr(handoff.handoff_type, "value") else handoff.handoff_type,
+                    json.dumps(handoff.artifacts),
+                    json.dumps(handoff.evidence),
+                    handoff.summary,
+                    json.dumps(handoff.requirements),
+                    json.dumps(handoff.warnings),
+                    handoff.workflow_id,
+                    handoff.created_at,
+                    json.dumps(handoff.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_worker_handoff", str(e)) from e
+
+    def list_worker_handoffs(self, workflow_id: Optional[str] = None) -> list["WorkerHandoff"]:
+        from core.workflow.model import WorkerHandoff
+        from core.workflow.types import HandoffType
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM worker_handoffs"
+            params = []
+            if workflow_id:
+                query += " WHERE workflow_id = ?"
+                params.append(workflow_id)
+            query += " ORDER BY created_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                WorkerHandoff(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    source_worker=row["source_worker"],
+                    source_task_id=row["source_task_id"],
+                    destination_worker=row["destination_worker"],
+                    destination_task_id=row["destination_task_id"],
+                    handoff_type=HandoffType(row["handoff_type"]),
+                    artifacts=json.loads(row["artifacts"]),
+                    evidence=json.loads(row["evidence"]),
+                    summary=row["summary"],
+                    requirements=json.loads(row["requirements"]),
+                    warnings=json.loads(row["warnings"]),
+                    workflow_id=row["workflow_id"],
+                    created_at=row["created_at"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    # Stage 14: Execution Attempts
+    def save_execution_attempt(self, attempt: "ExecutionAttempt") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO execution_attempts (
+                        id, task_id, attempt_number, worker_id, worker_version, status,
+                        workflow_id, error_message, duration_ms, started_at, completed_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        status = excluded.status,
+                        error_message = excluded.error_message,
+                        duration_ms = excluded.duration_ms,
+                        completed_at = excluded.completed_at,
+                        metadata = excluded.metadata;
+                """, (
+                    attempt.id,
+                    attempt.task_id,
+                    attempt.attempt_number,
+                    attempt.worker_id,
+                    attempt.worker_version,
+                    attempt.status,
+                    attempt.workflow_id,
+                    attempt.error_message,
+                    attempt.duration_ms,
+                    attempt.started_at,
+                    attempt.completed_at,
+                    json.dumps(attempt.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_execution_attempt", str(e)) from e
+
+    def list_execution_attempts(self, task_id: str) -> list["ExecutionAttempt"]:
+        from core.workflow.model import ExecutionAttempt
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM execution_attempts WHERE task_id = ? ORDER BY attempt_number ASC;", (task_id,))
+            rows = cursor.fetchall()
+            return [
+                ExecutionAttempt(
+                    id=row["id"],
+                    task_id=row["task_id"],
+                    attempt_number=row["attempt_number"],
+                    worker_id=row["worker_id"],
+                    worker_version=row["worker_version"],
+                    status=row["status"],
+                    workflow_id=row["workflow_id"],
+                    error_message=row["error_message"],
+                    duration_ms=row["duration_ms"],
+                    started_at=row["started_at"],
+                    completed_at=row["completed_at"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    # Stage 15: Autonomy Policies
+    def save_autonomy_policy(self, policy: "AutonomyPolicy") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO autonomy_policies (
+                        id, project_id, autonomy_level, allowed_tools, denied_tools,
+                        approval_required_actions, max_cost_limit, max_iterations,
+                        max_external_actions_per_hour, version, created_at, updated_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(project_id) DO UPDATE SET
+                        autonomy_level = excluded.autonomy_level,
+                        allowed_tools = excluded.allowed_tools,
+                        denied_tools = excluded.denied_tools,
+                        approval_required_actions = excluded.approval_required_actions,
+                        max_cost_limit = excluded.max_cost_limit,
+                        max_iterations = excluded.max_iterations,
+                        max_external_actions_per_hour = excluded.max_external_actions_per_hour,
+                        version = excluded.version + 1,
+                        updated_at = excluded.updated_at,
+                        metadata = excluded.metadata;
+                """, (
+                    policy.id,
+                    policy.project_id,
+                    policy.autonomy_level.value if hasattr(policy.autonomy_level, "value") else policy.autonomy_level,
+                    json.dumps(policy.allowed_tools),
+                    json.dumps(policy.denied_tools),
+                    json.dumps([a.value if hasattr(a, "value") else a for a in policy.approval_required_actions]),
+                    policy.max_cost_limit,
+                    policy.max_iterations,
+                    policy.max_external_actions_per_hour,
+                    policy.version,
+                    policy.created_at,
+                    policy.updated_at,
+                    json.dumps(policy.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_autonomy_policy", str(e)) from e
+
+    def get_autonomy_policy_by_project(self, project_id: str) -> Optional["AutonomyPolicy"]:
+        from core.autonomy.model import AutonomyPolicy
+        from core.autonomy.types import ActionCategory, AutonomyLevel
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM autonomy_policies WHERE project_id = ?;", (project_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            acts = [ActionCategory(a) for a in json.loads(row["approval_required_actions"])]
+            return AutonomyPolicy(
+                id=row["id"],
+                project_id=row["project_id"],
+                autonomy_level=AutonomyLevel(row["autonomy_level"]),
+                allowed_tools=json.loads(row["allowed_tools"]),
+                denied_tools=json.loads(row["denied_tools"]),
+                approval_required_actions=acts,
+                max_cost_limit=row["max_cost_limit"],
+                max_iterations=row["max_iterations"],
+                max_external_actions_per_hour=row["max_external_actions_per_hour"],
+                version=row["version"],
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                metadata=json.loads(row["metadata"]),
+            )
+
+    # Stage 15: Approval Requests
+    def save_approval_request(self, request: "ApprovalRequest") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO approval_requests (
+                        id, project_id, workflow_id, task_id, worker_id, action,
+                        category, risk_level, reason, requested_scope, affected_resources,
+                        evidence, status, created_at, expires_at, decided_at, decided_by,
+                        rejection_reason, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        status = excluded.status,
+                        decided_at = excluded.decided_at,
+                        decided_by = excluded.decided_by,
+                        rejection_reason = excluded.rejection_reason,
+                        metadata = excluded.metadata;
+                """, (
+                    request.id,
+                    request.project_id,
+                    request.workflow_id,
+                    request.task_id,
+                    request.worker_id,
+                    request.action,
+                    request.category.value if hasattr(request.category, "value") else request.category,
+                    request.risk_level.value if hasattr(request.risk_level, "value") else request.risk_level,
+                    request.reason,
+                    request.requested_scope,
+                    json.dumps(request.affected_resources),
+                    json.dumps(request.evidence),
+                    request.status.value if hasattr(request.status, "value") else request.status,
+                    request.created_at,
+                    request.expires_at,
+                    request.decided_at,
+                    request.decided_by,
+                    request.rejection_reason,
+                    json.dumps(request.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_approval_request", str(e)) from e
+
+    def get_approval_request(self, request_id: str) -> Optional["ApprovalRequest"]:
+        from core.autonomy.model import ApprovalRequest
+        from core.autonomy.types import ActionCategory, ApprovalRequestStatus
+        from core.enums import RiskLevel
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM approval_requests WHERE id = ?;", (request_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return ApprovalRequest(
+                id=row["id"],
+                project_id=row["project_id"],
+                workflow_id=row["workflow_id"],
+                task_id=row["task_id"],
+                worker_id=row["worker_id"],
+                action=row["action"],
+                category=ActionCategory(row["category"]),
+                risk_level=RiskLevel(row["risk_level"]),
+                reason=row["reason"],
+                requested_scope=row["requested_scope"],
+                affected_resources=json.loads(row["affected_resources"]),
+                evidence=json.loads(row["evidence"]),
+                status=ApprovalRequestStatus(row["status"]),
+                created_at=row["created_at"],
+                expires_at=row["expires_at"],
+                decided_at=row["decided_at"],
+                decided_by=row["decided_by"],
+                rejection_reason=row["rejection_reason"],
+                metadata=json.loads(row["metadata"]),
+            )
+
+    def list_approval_requests(self, project_id: Optional[str] = None, status: Optional[str] = None) -> list["ApprovalRequest"]:
+        from core.autonomy.model import ApprovalRequest
+        from core.autonomy.types import ActionCategory, ApprovalRequestStatus
+        from core.enums import RiskLevel
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM approval_requests WHERE 1=1"
+            params = []
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            query += " ORDER BY created_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                ApprovalRequest(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    workflow_id=row["workflow_id"],
+                    task_id=row["task_id"],
+                    worker_id=row["worker_id"],
+                    action=row["action"],
+                    category=ActionCategory(row["category"]),
+                    risk_level=RiskLevel(row["risk_level"]),
+                    reason=row["reason"],
+                    requested_scope=row["requested_scope"],
+                    affected_resources=json.loads(row["affected_resources"]),
+                    evidence=json.loads(row["evidence"]),
+                    status=ApprovalRequestStatus(row["status"]),
+                    created_at=row["created_at"],
+                    expires_at=row["expires_at"],
+                    decided_at=row["decided_at"],
+                    decided_by=row["decided_by"],
+                    rejection_reason=row["rejection_reason"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    # Stage 15: User Input Requests
+    def save_user_input_request(self, req: "UserInputRequest") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO user_input_requests (
+                        id, project_id, workflow_id, task_id, question, context, answer, status, created_at, answered_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        answer = excluded.answer,
+                        status = excluded.status,
+                        answered_at = excluded.answered_at,
+                        metadata = excluded.metadata;
+                """, (
+                    req.id,
+                    req.project_id,
+                    req.workflow_id,
+                    req.task_id,
+                    req.question,
+                    req.context,
+                    req.answer,
+                    req.status.value if hasattr(req.status, "value") else req.status,
+                    req.created_at,
+                    req.answered_at,
+                    json.dumps(req.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_user_input_request", str(e)) from e
+
+    def get_user_input_request(self, request_id: str) -> Optional["UserInputRequest"]:
+        from core.autonomy.model import UserInputRequest
+        from core.autonomy.types import UserInputStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM user_input_requests WHERE id = ?;", (request_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return UserInputRequest(
+                id=row["id"],
+                project_id=row["project_id"],
+                workflow_id=row["workflow_id"],
+                task_id=row["task_id"],
+                question=row["question"],
+                context=row["context"],
+                answer=row["answer"],
+                status=UserInputStatus(row["status"]),
+                created_at=row["created_at"],
+                answered_at=row["answered_at"],
+                metadata=json.loads(row["metadata"]),
+            )
+
+    # Stage 15: Decision Requests
+    def save_decision_request(self, req: "DecisionRequest") -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO decision_requests (
+                        id, project_id, workflow_id, task_id, title, options, chosen_option, rationale, status, created_at, decided_at, metadata
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        chosen_option = excluded.chosen_option,
+                        rationale = excluded.rationale,
+                        status = excluded.status,
+                        decided_at = excluded.decided_at,
+                        metadata = excluded.metadata;
+                """, (
+                    req.id,
+                    req.project_id,
+                    req.workflow_id,
+                    req.task_id,
+                    req.title,
+                    json.dumps(req.options),
+                    req.chosen_option,
+                    req.rationale,
+                    req.status.value if hasattr(req.status, "value") else req.status,
+                    req.created_at,
+                    req.decided_at,
+                    json.dumps(req.metadata),
+                ))
+            except Exception as e:
+                raise PersistenceError("save_decision_request", str(e)) from e
+
+    def get_decision_request(self, decision_id: str) -> Optional["DecisionRequest"]:
+        from core.autonomy.model import DecisionRequest
+        from core.autonomy.types import DecisionRequestStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM decision_requests WHERE id = ?;", (decision_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return DecisionRequest(
+                id=row["id"],
+                project_id=row["project_id"],
+                workflow_id=row["workflow_id"],
+                task_id=row["task_id"],
+                title=row["title"],
+                options=json.loads(row["options"]),
+                chosen_option=row["chosen_option"],
+                rationale=row["rationale"],
+                status=DecisionRequestStatus(row["status"]),
+                created_at=row["created_at"],
+                decided_at=row["decided_at"],
+                metadata=json.loads(row["metadata"]),
+            )
 
     def close(self) -> None:
         with self._lock:

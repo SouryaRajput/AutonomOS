@@ -134,7 +134,7 @@ class TestResearcherSearchBudgetAndStagnation(unittest.TestCase):
         self.assertTrue(output.success)
         res_meta = output.metadata.get("research_result", {})
         self.assertEqual(len(res_meta.get("sources", [])), 0)
-        self.assertIn("Uncertainty reported", output.summary)
+        self.assertIn("knowledge gap(s) identified", output.summary)
 
 
 if __name__ == "__main__":

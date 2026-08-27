@@ -537,6 +537,321 @@ class ActivityProjector:
             title = f"Research failed: {p.get('error', 'Unknown research failure')}"
             description = p.get("reason", "")
 
+        # Programmer Specialist Worker Events (Stage 12)
+        elif t == EventType.PROGRAMMER_STARTED:
+            icon = "code_start"
+            title = f"Programmer started task: '{p.get('objective', event.task_id)}'"
+            description = f"Mode: {p.get('mode', 'FEATURE')} | Scope: {len(p.get('allowed_paths', []))} path(s)"
+
+        elif t == EventType.PROGRAMMER_PLAN_CREATED:
+            icon = "code_plan"
+            title = f"Implementation plan formulated: {p.get('steps_count', 0)} steps"
+            description = f"Affected files: {', '.join(p.get('affected_files', [])) or 'Determined during execution'}"
+
+        elif t == EventType.PROGRAMMER_INSPECTION_PERFORMED:
+            icon = "code_inspect"
+            title = f"Repository inspection: {p.get('target', 'workspace')}"
+            description = f"Scanned: {p.get('summary', '')}"
+
+        elif t == EventType.PROGRAMMER_CODE_MODIFIED:
+            icon = "code_edit"
+            title = f"Code modified: [{p.get('change_type', 'MODIFY')}] {p.get('path', '')}"
+            description = f"Diff size: ~{p.get('diff_lines', 0)} lines | {p.get('description', '')}"
+
+        elif t == EventType.PROGRAMMER_DIFF_INSPECTED:
+            icon = "code_diff"
+            title = f"Diff validated: {p.get('files_changed_count', 0)} files changed"
+            description = f"Scope valid: {p.get('scope_valid', True)}"
+
+        elif t == EventType.PROGRAMMER_TEST_STARTED:
+            icon = "test_run"
+            title = f"Running test command: {p.get('command', 'tests')}"
+            description = f"Context: {p.get('stage', 'post-implementation')}"
+
+        elif t == EventType.PROGRAMMER_TEST_COMPLETED:
+            passed = p.get('passed', False)
+            icon = "test_pass" if passed else "test_fail"
+            level = ActivityLevel.SUCCESS if passed else ActivityLevel.WARNING
+            title = f"Tests {'PASSED' if passed else 'FAILED'}: {p.get('command', '')}"
+            description = f"Exit code: {p.get('exit_code', 0)} in {p.get('duration_ms', 0):.0f}ms"
+
+        elif t == EventType.PROGRAMMER_BUILD_STARTED:
+            icon = "build_start"
+            title = f"Running build validation: {p.get('command', 'build')}"
+            description = f"Target: {p.get('target', 'project')}"
+
+        elif t == EventType.PROGRAMMER_BUILD_COMPLETED:
+            passed = p.get('passed', False)
+            icon = "build_pass" if passed else "build_fail"
+            level = ActivityLevel.SUCCESS if passed else ActivityLevel.ERROR
+            title = f"Build {'PASSED' if passed else 'FAILED'}: {p.get('command', '')}"
+            description = f"Exit code: {p.get('exit_code', 0)}"
+
+        elif t == EventType.PROGRAMMER_SELF_REVIEW_COMPLETED:
+            icon = "code_review"
+            title = "Programmer self-review completed"
+            description = f"Checks passed: {p.get('checks_passed', True)} | Regression risk: {p.get('regression_risk', 'LOW')}"
+
+        elif t == EventType.PROGRAMMER_COMPLETED:
+            icon = "code_done"
+            level = ActivityLevel.SUCCESS
+            title = f"Implementation completed: {p.get('files_changed_count', 0)} files changed"
+            description = p.get("summary", "")
+
+        elif t == EventType.PROGRAMMER_FAILED:
+            icon = "alert_error"
+            level = ActivityLevel.ERROR
+            title = f"Implementation failed: {p.get('error', 'Unknown programming failure')}"
+            description = p.get("reason", "")
+
+        # Tester Specialist Worker Events (Stage 13)
+        elif t == EventType.TESTER_STARTED:
+            icon = "tester_start"
+            title = f"Tester started evaluation: '{p.get('objective', event.task_id)}'"
+            description = f"Categories: {', '.join(p.get('categories', []))}"
+
+        elif t == EventType.TEST_PLAN_CREATED:
+            icon = "test_plan"
+            title = f"Test strategy created ({p.get('requirements_count', 0)} requirements tracked)"
+            description = p.get("strategy_summary", "")
+
+        elif t == EventType.TEST_STARTED:
+            icon = "test_run"
+            title = f"Executing test suite: {p.get('command', 'tests')}"
+            description = f"Category: {p.get('category', 'UNIT')}"
+
+        elif t == EventType.TEST_COMPLETED:
+            passed = p.get('passed', False)
+            icon = "test_pass" if passed else "test_fail"
+            level = ActivityLevel.SUCCESS if passed else ActivityLevel.WARNING
+            title = f"Test suite {'PASSED' if passed else 'FAILED'}: {p.get('command', '')}"
+            description = f"Exit code: {p.get('exit_code', 0)} ({p.get('passed_count', 0)}/{p.get('total_count', 0)} passed)"
+
+        elif t == EventType.TEST_FAILED:
+            icon = "test_fail"
+            level = ActivityLevel.WARNING
+            title = f"Test failed: {p.get('test_name', 'Test')}"
+            description = f"Error: {p.get('error_message', '')}"
+
+        elif t == EventType.DEFECT_DETECTED:
+            icon = "defect"
+            level = ActivityLevel.ERROR if p.get('severity') in ('CRITICAL', 'HIGH') else ActivityLevel.WARNING
+            title = f"Defect [{p.get('severity', 'MEDIUM')}]: {p.get('title', 'Defect identified')}"
+            description = f"Requirement: {p.get('affected_requirement', '')} | Cause: {p.get('suspected_cause', 'Unknown')}"
+
+        elif t == EventType.REGRESSION_DETECTED:
+            icon = "regression"
+            level = ActivityLevel.ERROR
+            title = f"Regression detected: {p.get('test_name', 'Test broke against baseline')}"
+            description = f"Baseline status: PASSED -> Current: FAILED | {p.get('notes', '')}"
+
+        elif t == EventType.UI_TEST_STARTED:
+            icon = "ui_test"
+            title = f"Starting visual UI / OCR validation: {p.get('target', 'interface')}"
+            description = f"Tool: {p.get('tool_id', 'screenshot')}"
+
+        elif t == EventType.UI_TEST_COMPLETED:
+            passed = p.get('passed', False)
+            icon = "ui_pass" if passed else "ui_fail"
+            level = ActivityLevel.SUCCESS if passed else ActivityLevel.WARNING
+            title = f"UI / OCR validation {'PASSED' if passed else 'FAILED'}"
+            description = p.get('findings', '')
+
+        elif t == EventType.TESTER_COMPLETED:
+            icon = "tester_done"
+            level = ActivityLevel.SUCCESS
+            title = f"QA evaluation completed: {p.get('status', 'VERIFIED')}"
+            description = f"Requirements: {p.get('verified_count', 0)}/{p.get('total_requirements', 0)} verified | Defects: {p.get('defects_count', 0)}"
+
+        elif t == EventType.TESTER_FAILED:
+            icon = "alert_error"
+            level = ActivityLevel.ERROR
+            title = f"Tester failed: {p.get('error', 'Execution error')}"
+            description = p.get("reason", "")
+
+        elif t == EventType.TESTER_BLOCKED:
+            icon = "tester_blocked"
+            level = ActivityLevel.WARNING
+            title = f"Tester blocked: {p.get('reason', 'Missing environment or tools')}"
+            description = p.get("details", "")
+
+        # Workforce Workflow & Collaboration Events (Stage 14)
+        elif t == EventType.WORKFLOW_CREATED:
+            icon = "workflow_create"
+            title = f"Workflow created: '{p.get('title', 'Workflow')}'"
+            description = f"ID: {p.get('workflow_id')} | Objective: {p.get('objective', '')}"
+
+        elif t == EventType.WORKFLOW_STATUS_CHANGED:
+            icon = "workflow_status"
+            title = f"Workflow state: {p.get('old_status')} -> {p.get('new_status')}"
+            description = p.get("reason", "")
+
+        elif t == EventType.WORKFLOW_HANDOFF_EXECUTED:
+            icon = "handoff"
+            level = ActivityLevel.SUCCESS
+            title = f"Handoff: [{p.get('source_worker')}] -> [{p.get('destination_worker')}]"
+            description = f"Artifacts: {len(p.get('artifacts', []))} | Evidence: {len(p.get('evidence', []))}"
+
+        elif t == EventType.WORKFLOW_STEP_COMPLETED:
+            icon = "step_done"
+            level = ActivityLevel.SUCCESS
+            title = f"Workflow step completed: Task '{p.get('task_id')}' by {p.get('worker_id')}"
+            description = p.get("summary", "")
+
+        elif t == EventType.WORKFLOW_RETRY_TRIGGERED:
+            icon = "retry"
+            level = ActivityLevel.WARNING
+            title = f"Task retry triggered (attempt {p.get('attempt', 1)})"
+            description = f"Reason: {p.get('reason', 'Transient error')}"
+
+        elif t == EventType.WORKFLOW_REASSIGNED:
+            icon = "reassign"
+            title = f"Task reassigned: [{p.get('old_worker')}] -> [{p.get('new_worker')}]"
+            description = f"Reason: {p.get('reason', '')}"
+
+        elif t == EventType.WORKFLOW_BLOCKED:
+            icon = "workflow_blocked"
+            level = ActivityLevel.WARNING
+            title = f"Workflow blocked: {p.get('blocker', 'Unresolved issue')}"
+            description = p.get("details", "")
+
+        elif t == EventType.WORKFLOW_PAUSED:
+            icon = "workflow_pause"
+            level = ActivityLevel.WARNING
+            title = f"Workflow paused: {p.get('reason', 'User or policy pause')}"
+            description = f"Workflow: {p.get('workflow_id')}"
+
+        elif t == EventType.WORKFLOW_RESUMED:
+            icon = "workflow_resume"
+            level = ActivityLevel.SUCCESS
+            title = f"Workflow resumed"
+            description = f"Workflow: {p.get('workflow_id')}"
+
+        elif t == EventType.WORKFLOW_APPROVAL_REQUESTED:
+            icon = "approval_req"
+            level = ActivityLevel.WARNING
+            title = f"Workflow approval required: {p.get('action', 'Action')}"
+            description = f"Risk: {p.get('risk_level', 'HIGH')} | {p.get('reason', '')}"
+
+        elif t == EventType.WORKFLOW_APPROVED:
+            icon = "approval_ok"
+            level = ActivityLevel.SUCCESS
+            title = f"Workflow action approved by user: {p.get('action')}"
+            description = f"Approver: {p.get('approved_by', 'User')}"
+
+        elif t == EventType.WORKFLOW_REJECTED:
+            icon = "approval_no"
+            level = ActivityLevel.WARNING
+            title = f"Workflow action rejected: {p.get('action')}"
+            description = f"Reason: {p.get('reason', 'User rejected')}"
+
+        elif t == EventType.WORKFLOW_CANCELLED:
+            icon = "workflow_cancel"
+            level = ActivityLevel.WARNING
+            title = f"Workflow cancelled by {p.get('cancelled_by', 'User')}"
+            description = p.get("reason", "")
+
+        elif t == EventType.WORKFLOW_STAGNATION_DETECTED:
+            icon = "stagnation_alert"
+            level = ActivityLevel.WARNING
+            title = "Workflow stagnation detected: Repeated identical non-progress loop"
+            description = f"Iterations: {p.get('iterations', 0)} | Escalating to Manager"
+
+        elif t == EventType.WORKFLOW_COMPLETED:
+            icon = "workflow_done"
+            level = ActivityLevel.SUCCESS
+            title = f"Workflow completed successfully: '{p.get('title', '')}'"
+            description = f"Tasks completed: {p.get('completed_tasks_count', 0)}"
+
+        elif t == EventType.WORKFLOW_FAILED:
+            icon = "alert_error"
+            level = ActivityLevel.ERROR
+            title = f"Workflow failed: {p.get('error', 'Workflow error')}"
+            description = p.get("reason", "")
+
+        # Human-in-the-Loop & Autonomy Control Events (Stage 15)
+        elif t == EventType.AUTONOMY_POLICY_CREATED:
+            icon = "policy_create"
+            title = f"Autonomy policy v{p.get('version', 1)} established: {p.get('autonomy_level', 'BALANCED')}"
+            description = f"Project: {event.project_id}"
+
+        elif t == EventType.AUTONOMY_POLICY_UPDATED:
+            icon = "policy_update"
+            level = ActivityLevel.SUCCESS
+            title = f"Autonomy policy updated: {p.get('old_level')} -> {p.get('new_level')}"
+            description = f"Actor: {p.get('actor', 'User')}"
+
+        elif t == EventType.APPROVAL_REQUESTED:
+            icon = "approval_wait"
+            level = ActivityLevel.WARNING
+            title = f"Approval requested: {p.get('action', 'Action')}"
+            description = f"Risk: {p.get('risk_level', 'HIGH')} | Scope: {p.get('scope', 'action')}"
+
+        elif t == EventType.APPROVAL_GRANTED:
+            icon = "approval_ok"
+            level = ActivityLevel.SUCCESS
+            title = f"Approval granted: {p.get('action')}"
+            description = f"Approver: {p.get('approved_by', 'User')}"
+
+        elif t == EventType.APPROVAL_REJECTED:
+            icon = "approval_no"
+            level = ActivityLevel.WARNING
+            title = f"Approval rejected: {p.get('action')}"
+            description = f"Reason: {p.get('reason', '')}"
+
+        elif t == EventType.APPROVAL_EXPIRED:
+            icon = "alert_warning"
+            level = ActivityLevel.WARNING
+            title = f"Approval expired for request: {p.get('approval_id')}"
+            description = "New approval required to proceed"
+
+        elif t == EventType.USER_INPUT_REQUESTED:
+            icon = "user_input"
+            level = ActivityLevel.WARNING
+            title = f"User clarification needed: {p.get('question', '')}"
+            description = p.get("context", "")
+
+        elif t == EventType.USER_INPUT_RECEIVED:
+            icon = "user_response"
+            level = ActivityLevel.SUCCESS
+            title = f"User clarification provided"
+            description = f"Answer: {p.get('answer', '')}"
+
+        elif t == EventType.DECISION_REQUESTED:
+            icon = "decision_req"
+            level = ActivityLevel.WARNING
+            title = f"User decision requested: '{p.get('title', 'Choice')}'"
+            description = f"Options: {', '.join(p.get('options', []))}"
+
+        elif t == EventType.DECISION_RECEIVED:
+            icon = "decision_ok"
+            level = ActivityLevel.SUCCESS
+            title = f"User decision recorded: '{p.get('chosen_option', '')}'"
+            description = f"Decision ID: {p.get('decision_id')}"
+
+        elif t == EventType.EMERGENCY_STOP_ACTIVATED:
+            icon = "emergency_stop"
+            level = ActivityLevel.ERROR
+            title = f"EMERGENCY STOP ACTIVATED by {p.get('actor', 'User')}"
+            description = f"Reason: {p.get('reason', 'Immediate safety halt')}"
+
+        elif t == EventType.EMERGENCY_STOP_CLEARED:
+            icon = "emergency_clear"
+            level = ActivityLevel.WARNING
+            title = f"Emergency stop cleared by {p.get('actor', 'User')}"
+            description = "Workforce execution may now be resumed manually"
+
+        elif t == EventType.ACTION_BLOCKED_BY_POLICY:
+            icon = "policy_block"
+            level = ActivityLevel.ERROR
+            title = f"Action blocked by policy: {p.get('action')}"
+            description = f"Rule: {p.get('matched_rule', '')} | Risk: {p.get('risk_level', 'CRITICAL')}"
+
+        elif t == EventType.ACTION_ALLOWED_BY_POLICY:
+            icon = "policy_allow"
+            title = f"Action allowed by policy: {p.get('action')}"
+            description = f"Risk: {p.get('risk_level', 'LOW')}"
+
         # Worker Self-Reports
         elif t == EventType.WORKER_PROGRESS_LOGGED:
             icon = "worker_log"

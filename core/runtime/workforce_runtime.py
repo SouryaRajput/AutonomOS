@@ -43,6 +43,8 @@ from core.inference.secrets import EnvSecretStore, SecretStore
 from core.inference.types import ModelCapability, ProviderHealthStatus, RoutingProfile
 from core.manager.agent import ManagerAgent
 from core.manager.controller import ManagerController
+from core.workflow.coordinator import WorkflowCoordinator
+from core.autonomy.service import AutonomyService
 from core.manager.model import (
     ActionResult,
     CycleResult,
@@ -270,6 +272,12 @@ class WorkforceRuntime:
         self.manager_agent = ManagerAgent(self.inference)
         self.manager = ManagerController(self, agent=self.manager_agent)
 
+        # Stage 14: Workforce Workflow & Collaboration
+        self.workflows = WorkflowCoordinator(self)
+
+        # Stage 15: Human-in-the-Loop & Autonomy Control
+        self.autonomy = AutonomyService(self)
+
         # In-memory listeners for live event streaming (e.g. SSE / WebSocket / Activity feed)
         self._subscribers: list[Callable[[Event], None]] = []
 
@@ -412,6 +420,7 @@ class WorkforceRuntime:
         context_references: Optional[list[dict[str, Any]]] = None,
         max_attempts: int = 3,
         task_id: Optional[str] = None,
+        metadata: Optional[dict[str, Any]] = None,
     ) -> Task:
         task = self.tasks.create_task(
             project_id=project_id,
@@ -425,6 +434,7 @@ class WorkforceRuntime:
             context_references=context_references,
             max_attempts=max_attempts,
             task_id=task_id,
+            metadata=metadata,
         )
         self.log_event(
             event_type=EventType.TASK_CREATED,
