@@ -136,14 +136,23 @@ for event in timeline:
 
 ## 🗺️ Roadmap & Development Stages
 
-- [x] **Stage 0**: Architecture, Contracts & Design Specification
+- [x] **Stage 0**: Architecture, Contracts & Invariants Specification
 - [x] **Stage 1**: Core Workforce Runtime & Deterministic State Machines
-- [x] **Stage 2**: Event & Activity System with Causation Lineage
+- [x] **Stage 2**: Event & Activity System with Monotonic Causation Lineage
 - [x] **Stage 3**: Persistent Project Memory (`.autonomos/` Markdown Knowledge Base)
-- [ ] **Stage 4**: Context Engine & Dynamic Relevance Injection
-- [ ] **Stage 5**: Tool Runtime, Permissions & OS Sandboxing
-- [ ] **Stage 6**: Specialized AI Workers (Manager, Researcher, Programmer, Tester)
-- [ ] **Stage 7**: Cross-Platform Flutter Application & Realtime Client
+- [x] **Stage 4**: Context Engine & Bounded Relevance Token Budgeting
+- [x] **Stage 5**: Tool Runtime, Permissions & OS Sandboxing
+- [x] **Stage 6**: Safety, Checkpoints & File Rollback Engine
+- [x] **Stage 7**: Deterministic Verification Engine & Evidence Collection
+- [x] **Stage 8**: Inference Gateway, OmniRoute Fallback & Circuit Breakers
+- [x] **Stage 9**: Universal Worker SDK & Runtime Context Sandbox
+- [x] **Stage 10**: Manager Agent & Autonomous Cycle Decompositions
+- [x] **Stage 11**: Researcher Worker & Contradiction Resolution
+- [x] **Stage 12**: Programmer Worker & Atomic Patching Engine
+- [x] **Stage 13**: Tester Worker & Verification Adapter Harness
+- [x] **Stage 14**: Workforce Collaboration, Handoffs & Stagnation Detection
+- [x] **Stage 15**: Human-in-the-Loop, Autonomy Governance & Policy Engine
+- [x] **Stage 16**: Cross-Platform Flutter Application, Observability & Production Hardening
 
 ---
 

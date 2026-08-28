@@ -375,3 +375,35 @@ class AutonomyService:
                 source=EventSource.USER,
             )
             return req
+
+    # --- Query & UI Helper Methods ---
+    def list_pending_approvals(self, project_id: str) -> list[ApprovalRequest]:
+        with self._lock:
+            if hasattr(self.runtime.store, "list_approval_requests"):
+                return self.runtime.store.list_approval_requests(project_id=project_id, status=ApprovalRequestStatus.PENDING.value)
+            return []
+
+    def grant_approval(self, approval_id: str, decided_by: str = "User") -> ApprovalRequest:
+        return self.approve_request(approval_id=approval_id, approver=decided_by)
+
+    def reject_approval(self, approval_id: str, reason: str = "User rejected", decided_by: str = "User") -> ApprovalRequest:
+        return self.reject_request(approval_id=approval_id, reason=reason, decider=decided_by)
+
+    def list_pending_user_inputs(self, project_id: str) -> list[UserInputRequest]:
+        with self._lock:
+            if hasattr(self.runtime.store, "list_user_input_requests"):
+                return self.runtime.store.list_user_input_requests(project_id=project_id, status=UserInputStatus.PENDING.value)
+            return []
+
+    def respond_to_user_input(self, input_id: str, answer: str) -> UserInputRequest:
+        return self.answer_user_input(request_id=input_id, answer=answer)
+
+    def list_pending_decisions(self, project_id: str) -> list[DecisionRequest]:
+        with self._lock:
+            if hasattr(self.runtime.store, "list_decision_requests"):
+                return self.runtime.store.list_decision_requests(project_id=project_id, status=DecisionRequestStatus.PENDING.value)
+            return []
+
+    def respond_to_decision(self, decision_id: str, chosen_option: str, rationale: str = "") -> DecisionRequest:
+        return self.choose_decision(decision_id=decision_id, chosen_option=chosen_option)
+

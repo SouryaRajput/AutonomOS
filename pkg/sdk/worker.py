@@ -166,6 +166,19 @@ class WorkerRuntimeContext(ABC):
         """Record concrete evidence verifying the task execution."""
         pass
 
+    def request_verification(
+        self,
+        target_type: str = "TASK",
+        target_id: Optional[str] = None,
+        evidence_ids: Optional[list[str]] = None,
+        notes: str = "",
+        **kwargs,
+    ) -> Optional[Any]:
+        """Request deterministic verification of a task."""
+        if hasattr(self.verification, "verify"):
+            return self.verification.verify()
+        return None
+
     def log_event(self, event_type: str, payload: dict[str, Any]) -> None:
         """Emit an execution event to the runtime event bus."""
         self.events.emit(event_type, payload)

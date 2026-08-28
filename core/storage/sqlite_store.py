@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import json
 from pathlib import Path
 import sqlite3
 import threading
-from typing import Optional
+from typing import Any, Optional
 
 from core.enums import ArtifactType, DependencyType, MemoryType, ProjectStatus, RiskLevel, TaskStatus, WorkerStatus
 from core.errors import PersistenceError
@@ -387,6 +389,36 @@ class SQLiteStore(Store):
                 );
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_decisions_req_project ON decision_requests(project_id);")
+
+            # Conversations table (Stage 16)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversations (
+                    id TEXT PRIMARY KEY,
+                    project_id TEXT NOT NULL,
+                    title TEXT NOT NULL,
+                    created_at TEXT NOT NULL,
+                    updated_at TEXT NOT NULL,
+                    is_active INTEGER NOT NULL DEFAULT 1,
+                    FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_conversations_project ON conversations(project_id);")
+
+            # Conversation Messages table (Stage 16)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS conversation_messages (
+                    id TEXT PRIMARY KEY,
+                    conversation_id TEXT NOT NULL,
+                    message_type TEXT NOT NULL,
+                    content TEXT NOT NULL,
+                    sender TEXT NOT NULL,
+                    timestamp TEXT NOT NULL,
+                    metadata TEXT NOT NULL DEFAULT '{}',
+                    related_event_id TEXT,
+                    FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE
+                );
+            """)
+            cursor.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation ON conversation_messages(conversation_id);")
 
     # Project Operations
     def save_project(self, project: Project) -> None:
@@ -1789,6 +1821,184 @@ class SQLiteStore(Store):
                 decided_at=row["decided_at"],
                 metadata=json.loads(row["metadata"]),
             )
+
+    def list_user_input_requests(self, project_id: Optional[str] = None, status: Optional[str] = None) -> list["UserInputRequest"]:
+        from core.autonomy.model import UserInputRequest
+        from core.autonomy.types import UserInputStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM user_input_requests WHERE 1=1"
+            params: list[Any] = []
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            query += " ORDER BY created_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                UserInputRequest(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    workflow_id=row["workflow_id"],
+                    task_id=row["task_id"],
+                    question=row["question"],
+                    context=row["context"],
+                    answer=row["answer"],
+                    status=UserInputStatus(row["status"]),
+                    created_at=row["created_at"],
+                    answered_at=row["answered_at"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    def list_decision_requests(self, project_id: Optional[str] = None, status: Optional[str] = None) -> list["DecisionRequest"]:
+        from core.autonomy.model import DecisionRequest
+        from core.autonomy.types import DecisionRequestStatus
+        with self._lock:
+            cursor = self._conn.cursor()
+            query = "SELECT * FROM decision_requests WHERE 1=1"
+            params: list[Any] = []
+            if project_id:
+                query += " AND project_id = ?"
+                params.append(project_id)
+            if status:
+                query += " AND status = ?"
+                params.append(status)
+            query += " ORDER BY created_at ASC;"
+            cursor.execute(query, params)
+            rows = cursor.fetchall()
+            return [
+                DecisionRequest(
+                    id=row["id"],
+                    project_id=row["project_id"],
+                    workflow_id=row["workflow_id"],
+                    task_id=row["task_id"],
+                    title=row["title"],
+                    options=json.loads(row["options"]),
+                    chosen_option=row["chosen_option"],
+                    rationale=row["rationale"],
+                    status=DecisionRequestStatus(row["status"]),
+                    created_at=row["created_at"],
+                    decided_at=row["decided_at"],
+                    metadata=json.loads(row["metadata"]),
+                )
+                for row in rows
+            ]
+
+    def save_conversation(self, conversation_id: str, project_id: str, title: str, created_at: str, updated_at: str, is_active: bool = True) -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO conversations (id, project_id, title, created_at, updated_at, is_active)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        title = excluded.title,
+                        updated_at = excluded.updated_at,
+                        is_active = excluded.is_active;
+                """, (conversation_id, project_id, title, created_at, updated_at, 1 if is_active else 0))
+            except Exception as e:
+                raise PersistenceError("save_conversation", str(e)) from e
+
+    def get_conversation(self, conversation_id: str) -> Optional[dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM conversations WHERE id = ?;", (conversation_id,))
+            row = cursor.fetchone()
+            if not row:
+                return None
+            return {
+                "id": row["id"],
+                "project_id": row["project_id"],
+                "title": row["title"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "is_active": bool(row["is_active"]),
+            }
+
+    def list_conversations_for_project(self, project_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM conversations WHERE project_id = ? ORDER BY updated_at DESC;", (project_id,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "project_id": r["project_id"],
+                    "title": r["title"],
+                    "created_at": r["created_at"],
+                    "updated_at": r["updated_at"],
+                    "is_active": bool(r["is_active"]),
+                }
+                for r in rows
+            ]
+
+    def add_conversation_message(
+        self,
+        message_id: str,
+        conversation_id: str,
+        message_type: str,
+        content: str,
+        sender: str,
+        timestamp: str,
+        metadata: Optional[dict[str, Any]] = None,
+        related_event_id: Optional[str] = None,
+    ) -> None:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("""
+                    INSERT INTO conversation_messages (id, conversation_id, message_type, content, sender, timestamp, metadata, related_event_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(id) DO UPDATE SET
+                        content = excluded.content,
+                        metadata = excluded.metadata;
+                """, (
+                    message_id,
+                    conversation_id,
+                    message_type,
+                    content,
+                    sender,
+                    timestamp,
+                    json.dumps(metadata or {}),
+                    related_event_id,
+                ))
+                # update conversation updated_at
+                cursor.execute("UPDATE conversations SET updated_at = ? WHERE id = ?;", (timestamp, conversation_id))
+            except Exception as e:
+                raise PersistenceError("add_conversation_message", str(e)) from e
+
+    def get_conversation_messages(self, conversation_id: str) -> list[dict[str, Any]]:
+        with self._lock:
+            cursor = self._conn.cursor()
+            cursor.execute("SELECT * FROM conversation_messages WHERE conversation_id = ? ORDER BY timestamp ASC;", (conversation_id,))
+            rows = cursor.fetchall()
+            return [
+                {
+                    "id": r["id"],
+                    "conversation_id": r["conversation_id"],
+                    "message_type": r["message_type"],
+                    "content": r["content"],
+                    "sender": r["sender"],
+                    "timestamp": r["timestamp"],
+                    "metadata": json.loads(r["metadata"]),
+                    "related_event_id": r["related_event_id"],
+                }
+                for r in rows
+            ]
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        with self._lock:
+            try:
+                cursor = self._conn.cursor()
+                cursor.execute("DELETE FROM conversations WHERE id = ?;", (conversation_id,))
+                return cursor.rowcount > 0
+            except Exception as e:
+                raise PersistenceError("delete_conversation", str(e)) from e
 
     def close(self) -> None:
         with self._lock:

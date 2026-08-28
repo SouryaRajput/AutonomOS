@@ -8,7 +8,7 @@ from core.enums import ArtifactType
 from core.events.types import EventType
 from core.inference.model import ModelRequirement
 from core.inference.types import ModelCapability
-from core.models import Task, WorkerManifest
+from core.models import Task, WorkerManifest, utc_now
 from pkg.sdk.worker import WorkerRuntimeContext
 from pkg.sdk.types import WorkerCapability, WorkerConfig, WorkerRequirement
 from pkg.sdk.worker import Worker, WorkerOutput
@@ -46,8 +46,9 @@ class TesterWorker(Worker):
     and produces structured reports for Manager handoffs.
     """
 
-    def __init__(self, worker_id: str = "worker.tester.default", config: Optional[WorkerConfig] = None):
-        super().__init__(worker_id=worker_id, config=config)
+    def __init__(self, worker_id: str = "worker.tester", config: Optional[WorkerConfig] = None):
+        self.worker_id = worker_id
+        self.config = config or WorkerConfig()
 
     def get_manifest(self) -> WorkerManifest:
         return WorkerManifest(
@@ -57,23 +58,20 @@ class TesterWorker(Worker):
             description="Executes independent tests, verifies requirements, isolates regressions, investigates defects, and logs authoritative evidence.",
             version="1.0.0",
             capabilities=[
-                WorkerCapability.TESTING,
-                WorkerCapability.CODE_ANALYSIS,
-                WorkerCapability.UI_ANALYSIS,
-                WorkerCapability.CODE_EXECUTION,
-                WorkerCapability.VISION,
-                WorkerCapability.STRUCTURED_OUTPUT,
+                "TESTING",
+                "CODE_ANALYSIS",
+                "UI_ANALYSIS",
+                "CODE_EXECUTION",
+                "VISION",
+                "STRUCTURED_OUTPUT",
             ],
-            requirements=WorkerRequirement(
-                required_tools=["shell.execute", "filesystem.read", "filesystem.list"],
-                preferred_inference_capabilities={ModelCapability.REASONING, ModelCapability.STRUCTURED_OUTPUT},
-                required_context_categories=["code", "architecture", "requirements", "artifacts"],
-                minimum_context_window=8000,
-            ),
+            tools=["shell.execute", "filesystem.read", "filesystem.list"],
+            permissions=["*"],
+            created_at=utc_now(),
         )
 
-    def execute_task(self, context: WorkerRuntimeContext) -> WorkerOutput:
-        task = context.task
+    def execute_task(self, context: WorkerRuntimeContext, task: Optional[Task] = None) -> WorkerOutput:
+        task = task or context.task
         start_time = time.perf_counter()
 
         # 1. Parse Task Specification & Decompose Requirements
@@ -369,7 +367,8 @@ class TesterWorker(Worker):
         return WorkerOutput(
             success=(final_status == TesterFinalStatus.VERIFIED),
             summary=manager_summary,
-            artifacts=[rel_report_path],
+            report_markdown=manager_summary,
+            created_artifacts=[{"path": rel_report_path}],
             metadata={
                 "tester_result": tester_result.to_dict(),
                 "status": final_status.value,

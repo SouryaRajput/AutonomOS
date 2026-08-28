@@ -332,6 +332,18 @@ class _HarnessWorkerRuntimeContext(WorkerRuntimeContext):
         self._harness.recorded_evidence.append(ev)
         return ev
 
+    def request_verification(
+        self,
+        target_type: str = "TASK",
+        target_id: Optional[str] = None,
+        evidence_ids: Optional[list[str]] = None,
+        notes: str = "",
+        **kwargs,
+    ) -> Optional[Any]:
+        if hasattr(self.verification, "verify"):
+            return self.verification.verify()
+        return None
+
 
 class WorkerTestHarness:
     """

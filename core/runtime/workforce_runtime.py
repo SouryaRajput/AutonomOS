@@ -263,10 +263,18 @@ class WorkforceRuntime:
             event_logger=self.log_event,
         )
 
-        # Register default deterministic mock provider
+        # Register real inference providers and fallback mock provider
+        from core.inference.real_providers import GroqProvider, OpenRouterProvider, OllamaProvider
+        groq_provider = GroqProvider()
+        openrouter_provider = OpenRouterProvider()
+        ollama_provider = OllamaProvider()
         default_mock_provider = MockProvider()
+
+        self.providers.register_provider(groq_provider)
+        self.providers.register_provider(openrouter_provider)
+        self.providers.register_provider(ollama_provider)
         self.providers.register_provider(default_mock_provider)
-        self.models.sync_from_providers([default_mock_provider])
+        self.models.sync_from_providers([groq_provider, openrouter_provider, ollama_provider, default_mock_provider])
 
         # Stage 10: Manager Agent & Workforce Orchestrator
         self.manager_agent = ManagerAgent(self.inference)
@@ -405,6 +413,16 @@ class WorkforceRuntime:
 
     def register_worker_instance_only(self, worker: Worker) -> None:
         self.workers.register_worker_instance_only(worker)
+
+    def register_default_specialist_workers(self) -> None:
+        """Register the production AI specialist workers: Researcher, Programmer, Tester."""
+        from workers.programmer.worker import ProgrammerWorker
+        from workers.researcher.worker import ResearcherWorker
+        from workers.tester.worker import TesterWorker
+
+        self.register_worker(ResearcherWorker())
+        self.register_worker(ProgrammerWorker())
+        self.register_worker(TesterWorker())
 
     # Task Operations
     def create_task(

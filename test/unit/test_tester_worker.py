@@ -79,11 +79,8 @@ class TestTesterWorkerUnit(unittest.TestCase):
         self.assertEqual(len(plan.requirement_traces), 2)
 
     def test_investigator_failure_classification(self):
-        harness = WorkerTestHarness(project=self.project)
-        context = harness.create_context(
-            task=Task(id="t-inv-1", project_id=self.project.id, title="Test", objective="Test"),
-            worker_id="worker.tester.test",
-        )
+        harness = WorkerTestHarness(worker_id="worker.tester.test", project_id=self.project.id)
+        context = harness.context
         investigator = DefectInvestigator(context)
 
         # 1. Implementation bug
@@ -187,7 +184,12 @@ if __name__ == '__main__':
     unittest.main()
 """)
 
-        harness = WorkerTestHarness(project=self.project)
+        harness = WorkerTestHarness(worker_id="worker.tester.unit", project_id=self.project.id)
+        harness.mock_tool("shell.execute", {
+            "exit_code": 0,
+            "stdout": "Ran 1 test in 0.001s\n\nOK",
+            "stderr": "",
+        })
         worker = TesterWorker("worker.tester.unit")
 
         task = Task(
@@ -204,13 +206,13 @@ if __name__ == '__main__':
         output = harness.run(worker, task)
         self.assertTrue(output.success)
         self.assertIn("QA Evaluation Status: **VERIFIED**", output.summary)
-        self.assertEqual(len(output.artifacts), 1)
+        self.assertEqual(len(output.created_artifacts), 1)
 
         # Check evidence was recorded
         self.assertGreater(len(output.metadata.get("evidence_ids", [])), 0)
 
         # Verify event sequence
-        events = [e.event_type.value for e in harness.events]
+        events = [e["event_type"] for e in harness.emitted_events]
         self.assertIn(EventType.TESTER_STARTED.value, events)
         self.assertIn(EventType.TEST_PLAN_CREATED.value, events)
         self.assertIn(EventType.TEST_STARTED.value, events)
@@ -230,7 +232,12 @@ if __name__ == '__main__':
     unittest.main()
 """)
 
-        harness = WorkerTestHarness(project=self.project)
+        harness = WorkerTestHarness(worker_id="worker.tester.unit", project_id=self.project.id)
+        harness.mock_tool("shell.execute", {
+            "exit_code": 1,
+            "stdout": "",
+            "stderr": "AssertionError: 1 != 2",
+        })
         worker = TesterWorker("worker.tester.unit")
 
         task = Task(
@@ -249,7 +256,7 @@ if __name__ == '__main__':
         self.assertIn("Defects Diagnosed", output.summary)
         self.assertEqual(output.metadata["defects_count"], 1)
 
-        events = [e.event_type.value for e in harness.events]
+        events = [e["event_type"] for e in harness.emitted_events]
         self.assertIn(EventType.DEFECT_DETECTED.value, events)
         self.assertIn(EventType.TESTER_FAILED.value, events)
 
