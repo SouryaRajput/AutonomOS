@@ -197,17 +197,121 @@ Mapped the project and prepared 2 tasks. Workers are currently disabled.
       );
       await tester.pumpAndSettle();
 
-      // Verify concise main conversation text
-      expect(find.text('Improve the pitch graph spacing.'), findsOneWidget);
-      expect(find.text('Mapped the project and prepared 2 tasks. Workers are currently disabled.'), findsOneWidget);
+    testWidgets('DocumentStreamView renders compact tool execution row with diff badges',
+        (WidgetTester tester) async {
+      final messages = [
+        ChatMessage(
+          id: 'msg-tool-1',
+          conversationId: 'c1',
+          sender: 'manager',
+          content: '''
+Ran 3 commands, created 3 files, used a tool +166 -0 >
+Updated SongPitchGraph.tsx +421 -212 >
+Read 2 files, ran 5 commands, used a tool >
+''',
+          timestamp: '2026-08-29T10:00:05Z',
+          messageType: MessageType.managerMessage,
+        ),
+      ];
 
-      // Verify Manager Activity Card is embedded
-      expect(find.text('Manager Orchestration'), findsOneWidget);
-      expect(find.text('Workers Inactive'), findsOneWidget);
-      expect(find.text('Checking workspace...'), findsOneWidget);
-      expect(find.text('Project Map loaded'), findsOneWidget);
-      expect(find.text('Planning work...'), findsOneWidget);
-      expect(find.text('Workers are disabled'), findsOneWidget);
+      final scrollController = ScrollController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DocumentStreamView(
+              messages: messages,
+              isSending: false,
+              scrollController: scrollController,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('+166'), findsOneWidget);
+      expect(find.text('-0'), findsOneWidget);
+      expect(find.text('+421'), findsOneWidget);
+      expect(find.text('-212'), findsOneWidget);
+    });
+
+    testWidgets('DocumentStreamView renders action group card',
+        (WidgetTester tester) async {
+      final messages = [
+        ChatMessage(
+          id: 'msg-act-1',
+          conversationId: 'c1',
+          sender: 'manager',
+          content: '''
+Typechecked all projects with force rebuild >
+Linted the two changed UI files >
+Found captured lesson fixture and the page loader >
+''',
+          timestamp: '2026-08-29T10:00:05Z',
+          messageType: MessageType.managerMessage,
+        ),
+      ];
+
+      final scrollController = ScrollController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DocumentStreamView(
+              messages: messages,
+              isSending: false,
+              scrollController: scrollController,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('Typechecked all projects with force rebuild'), findsOneWidget);
+      expect(find.text('Linted the two changed UI files'), findsOneWidget);
+      expect(find.text('Found captured lesson fixture and the page loader'), findsOneWidget);
+    });
+
+    testWidgets('DocumentStreamView renders working tree diff view',
+        (WidgetTester tester) async {
+      final messages = [
+        ChatMessage(
+          id: 'msg-diff-1',
+          conversationId: 'c1',
+          sender: 'manager',
+          content: '''
+```diff
+test_learner_model.py +0 -67
+test_performance_analysis.py +0 -97
+test_scoring.py +0 -60
+- import numpy as np
+- from singing_coach.scoring.scorer import Scorer
++ import numpy as np
+```
+''',
+          timestamp: '2026-08-29T10:00:05Z',
+          messageType: MessageType.managerMessage,
+        ),
+      ];
+
+      final scrollController = ScrollController();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: DocumentStreamView(
+              messages: messages,
+              isSending: false,
+              scrollController: scrollController,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('main → working tree'), findsOneWidget);
+      expect(find.text('test_learner_model.py'), findsOneWidget);
+      expect(find.text('test_performance_analysis.py'), findsOneWidget);
     });
   });
 }
