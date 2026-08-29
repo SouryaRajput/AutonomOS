@@ -18,6 +18,7 @@ from app.services.export_service import ExportImportService
 from app.services.search_service import SearchService
 from app.services.storage_service import StorageService
 from app.services.version_service import VersionService
+from app.services.workspace_service import WorkspaceService
 from app.stream.event_stream import EventStreamManager
 from core.runtime.workforce_runtime import WorkforceRuntime
 from core.safety.model import SafetyConfig
@@ -51,6 +52,7 @@ class AutonomOSApp:
         self.storage = StorageService(runtime)
         self.export_import = ExportImportService(runtime)
         self.version = VersionService(runtime)
+        self.workspace = WorkspaceService(runtime)
 
         # Real-time event streaming
         self.stream = EventStreamManager(runtime)

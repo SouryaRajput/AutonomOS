@@ -230,6 +230,40 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
                     activity = self.app.events.get_activity_feed(limit=limit)
                 return self._send_json(200, activity)
 
+            # 13. Workspace & Project Map Routes
+            if path == "/api/workspace/status":
+                status = self.app.workspace.get_status()
+                return self._send_json(200, status.to_dict())
+
+            if path == "/api/workspace/map":
+                fmt = q("format", "json")
+                if fmt == "markdown":
+                    md = self.app.workspace.get_project_map_markdown()
+                    return self._send_json(200, {"markdown": md})
+                else:
+                    pmap = self.app.workspace.get_project_map_json()
+                    return self._send_json(200, pmap or {})
+
+            if path == "/api/workspace/subsystems":
+                subs = self.app.workspace.list_subsystems()
+                return self._send_json(200, subs)
+
+            if path == "/api/workspace/file-detail":
+                fpath = q("path", "")
+                fdetail = self.app.workspace.get_file_detail(fpath)
+                if not fdetail:
+                    return self._send_error(404, "FILE_NOT_FOUND", f"File '{fpath}' not found in project map.")
+                return self._send_json(200, fdetail)
+
+            if path == "/api/workspace/audit-history":
+                history = self.app.workspace.get_audit_history()
+                return self._send_json(200, history)
+
+            if path == "/api/workspace/query":
+                q_str = q("q", "")
+                ctx = self.app.workspace.query_context(q_str)
+                return self._send_json(200, ctx)
+
             return self._send_error(404, "NOT_FOUND", f"Route GET {path} not found.")
 
         except AppException as e:
@@ -338,6 +372,18 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
                 prov_id = path.split("/")[3]
                 key_val = body.get("key", "")
                 res = self.app.providers.set_provider_key(prov_id, key_val)
+                return self._send_json(200, res)
+
+            # 7. Workspace & Project Map Operations
+            if path == "/api/workspace/set-folder":
+                folder_path = body.get("folder_path", os.getcwd())
+                res = self.app.workspace.set_active_folder(folder_path)
+                return self._send_json(200, res.to_dict())
+
+            if path == "/api/workspace/audit":
+                full = body.get("full", False)
+                trigger = body.get("trigger", "MANUAL_TRIGGER")
+                res = self.app.workspace.run_audit(full=full, trigger=trigger)
                 return self._send_json(200, res)
 
             return self._send_error(404, "NOT_FOUND", f"Route POST {path} not found.")
