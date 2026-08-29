@@ -253,6 +253,30 @@ class ControlledWorkspaceFS:
         self._record_audit("rename_or_move", dest, "SUCCESS", {"from": str(src_rel), "to": str(dest_rel)})
         return dest
 
+    def rename_file(self, src_rel: str | Path, dest_rel: str | Path) -> Path:
+        src = self.resolve_safe_path(src_rel)
+        if not src.is_file():
+            raise FileNotFoundError(f"Source file '{src_rel}' does not exist or is not a file.")
+        return self.rename_or_move(src_rel, dest_rel)
+
+    def move_file(self, src_rel: str | Path, dest_rel: str | Path) -> Path:
+        src = self.resolve_safe_path(src_rel)
+        if not src.is_file():
+            raise FileNotFoundError(f"Source file '{src_rel}' does not exist or is not a file.")
+        return self.rename_or_move(src_rel, dest_rel)
+
+    def rename_directory(self, src_rel: str | Path, dest_rel: str | Path) -> Path:
+        src = self.resolve_safe_path(src_rel)
+        if not src.is_dir():
+            raise NotADirectoryError(f"Source directory '{src_rel}' does not exist or is not a directory.")
+        return self.rename_or_move(src_rel, dest_rel)
+
+    def move_directory(self, src_rel: str | Path, dest_rel: str | Path) -> Path:
+        src = self.resolve_safe_path(src_rel)
+        if not src.is_dir():
+            raise NotADirectoryError(f"Source directory '{src_rel}' does not exist or is not a directory.")
+        return self.rename_or_move(src_rel, dest_rel)
+
     def delete_file(self, rel_path: str | Path) -> bool:
         target = self.resolve_safe_path(rel_path)
         if not target.exists():

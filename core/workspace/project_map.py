@@ -6,89 +6,81 @@ import os
 from pathlib import Path
 import re
 import time
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 import uuid
 
 from core.workspace.auditor import ProjectAuditor
 from core.workspace.filesystem import ControlledWorkspaceFS
+from core.workspace.scanner import RepositoryScanner, RepositoryIndex, FileMetadata
 
 logger = logging.getLogger("AutonomOS.ProjectMapEngine")
 
 
 class ProjectMapEngine:
     """
-    Manages the persistent Project Map, hierarchical project knowledge,
+    Manages persistent Project Map generation, hierarchical project knowledge,
     and targeted context retrieval for the AutonomOS Manager.
     """
 
-    def __init__(self, fs: ControlledWorkspaceFS, auditor: Optional[ProjectAuditor] = None):
+    def __init__(self, fs: ControlledWorkspaceFS, auditor: Optional[Any] = None, scanner: Optional[RepositoryScanner] = None):
         self.fs = fs
-        self.auditor = auditor or ProjectAuditor(fs)
+        if isinstance(auditor, RepositoryScanner):
+            self.scanner = auditor
+            self.auditor = ProjectAuditor(fs)
+        elif isinstance(auditor, ProjectAuditor):
+            self.auditor = auditor
+            self.scanner = scanner or RepositoryScanner(fs)
+        else:
+            self.auditor = auditor or ProjectAuditor(fs)
+            self.scanner = scanner or RepositoryScanner(fs)
 
-        self.map_json_path = self.fs.meta_dir / "project_map.json"
-        self.map_md_path = self.fs.meta_dir / "PROJECT_MAP.md"
-        self.snapshot_path = self.fs.meta_dir / "last_snapshot.json"
-        self.audit_history_path = self.fs.meta_dir / "audit_history.json"
+        self.meta_dir = self.fs.meta_dir
+        self.map_json_path = self.meta_dir / "project_map.json"
+        self.map_md_primary = self.meta_dir / "project-map.md"
+        self.map_md_legacy = self.meta_dir / "PROJECT_MAP.md"
+        self.map_md_path = self.map_md_primary
+        self.snapshot_path = self.meta_dir / "last_snapshot.json"
+        self.audit_history_path = self.meta_dir / "audit_history.json"
 
     def is_initialized(self) -> bool:
         """Returns True if the Project Map and snapshot exist and are valid."""
-        return self.map_json_path.exists() and self.snapshot_path.exists()
+        return (self.map_md_primary.exists() or self.map_md_legacy.exists()) and self.map_json_path.exists()
 
     def perform_full_audit(self, trigger: str = "INITIAL_AUDIT") -> Dict[str, Any]:
         """
-        Executes a complete, deterministic initial repository audit,
-        builds the Project Map, generates Markdown documentation, and saves the snapshot.
+        Executes a complete, deterministic repository scan and creates persistent
+        .autonomos/project-map.md and .autonomos/project_map.json.
         """
         start_time = time.time()
-        logger.info(f"Starting full project audit for workspace '{self.fs.workspace_root}' (Trigger: {trigger})")
+        logger.info(f"Generating persistent Project Map for workspace '{self.fs.workspace_root}' (Trigger: {trigger})")
 
-        # 1. Scan files
-        files = self.auditor.scan_workspace_files()
+        # 1. Run deterministic repository scan
+        index: RepositoryIndex = self.scanner.scan_repository()
 
-        # 2. Detect tech stack
-        tech_stack = self.auditor.detect_tech_stack(files)
+        # 2. Build forward and reverse dependency graphs
+        forward_graph, reverse_graph = self._build_dependency_graph(index)
 
-        # 3. Extract symbols, imports, and purposes for each file
-        parsed_meta: Dict[str, Dict[str, Any]] = {}
-        for f in files:
-            p = f["path"]
-            if f["category"] in ("source", "test", "manifest_config"):
-                meta = self.auditor.extract_file_symbols_and_imports(p)
-                parsed_meta[p] = meta
-            else:
-                parsed_meta[p] = {
-                    "symbols": [],
-                    "imports": [],
-                    "todos": [],
-                    "purpose": f"Asset / {f['category']}",
-                }
+        # 3. Cluster into architectural subsystems
+        subsystems = self._cluster_subsystems(index, forward_graph)
 
-        # 4. Build forward and reverse dependency graphs
-        forward_graph, reverse_graph = self.auditor.build_dependency_graph(files, parsed_meta)
-
-        # 5. Cluster into subsystems
-        subsystems = self.auditor.cluster_subsystems(files, parsed_meta)
-
-        # 6. Build Project Map Data Structure
+        # 4. Assemble Project Map Data Structure
         project_name = self.fs.workspace_root.name
         now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
         file_records: Dict[str, Dict[str, Any]] = {}
-        for f in files:
-            p = f["path"]
-            pm = parsed_meta.get(p, {})
-            file_records[p] = {
-                "path": p,
-                "name": f["name"],
-                "category": f["category"],
-                "size": f["size"],
-                "mtime": f["mtime"],
-                "hash": f["hash"],
-                "purpose": pm.get("purpose", ""),
-                "symbols": pm.get("symbols", []),
-                "dependencies": forward_graph.get(p, []),
-                "dependents": reverse_graph.get(p, []),
-                "todos": pm.get("todos", []),
+        for path, meta in index.files.items():
+            file_records[path] = {
+                "path": path,
+                "name": meta.name,
+                "category": meta.category,
+                "size": meta.size,
+                "mtime": meta.mtime,
+                "hash": meta.hash,
+                "purpose": meta.purpose,
+                "symbols": meta.symbols,
+                "dependencies": forward_graph.get(path, []),
+                "dependents": reverse_graph.get(path, []),
+                "todos": meta.todos,
                 "last_audited": now_iso,
             }
 
@@ -97,84 +89,124 @@ class ProjectMapEngine:
             "project_name": project_name,
             "root_path": str(self.fs.workspace_root),
             "last_audited": now_iso,
-            "tech_stack": tech_stack,
-            "total_files": len(files),
+            "tech_stack": index.tech_stack,
+            "git_state": index.git_state.to_dict(),
+            "total_files": index.total_files,
+            "total_size_bytes": index.total_size_bytes,
+            "source_directories": index.source_directories,
+            "test_directories": index.test_directories,
+            "doc_directories": index.doc_directories,
+            "script_directories": index.script_directories,
+            "entry_points": index.entry_points,
+            "manifests": index.manifests,
             "subsystems": subsystems,
             "files": file_records,
         }
 
-        # 7. Persist project_map.json
+        # 5. Persist .autonomos/project_map.json
         with open(self.map_json_path, "w", encoding="utf-8") as f:
             json.dump(project_map, f, indent=2)
 
-        # 8. Persist last_snapshot.json
+        # 6. Persist .autonomos/last_snapshot.json
         snapshot: Dict[str, Any] = {
             "version": "1.0",
             "timestamp": now_iso,
-            "file_count": len(files),
-            "files": {f["path"]: {"hash": f["hash"], "size": f["size"], "mtime": f["mtime"]} for f in files},
+            "file_count": index.total_files,
+            "files": {p: {"hash": m.hash, "size": m.size, "mtime": m.mtime} for p, m in index.files.items()},
         }
         with open(self.snapshot_path, "w", encoding="utf-8") as f:
             json.dump(snapshot, f, indent=2)
 
-        # 9. Generate PROJECT_MAP.md
+        # 7. Generate and write .autonomos/project-map.md
         md_content = self.generate_project_map_markdown(project_map)
-        with open(self.map_md_path, "w", encoding="utf-8") as f:
+        with open(self.map_md_primary, "w", encoding="utf-8") as f:
             f.write(md_content)
 
-        # 10. Record Audit History
+        with open(self.map_md_legacy, "w", encoding="utf-8") as f:
+            f.write(md_content)
+
+        # 8. Record Audit History
         duration = round(time.time() - start_time, 3)
         self._append_audit_history({
             "audit_id": f"aud-{uuid.uuid4().hex[:8]}",
             "timestamp": now_iso,
             "trigger": trigger,
             "duration_seconds": duration,
-            "files_inspected": len(files),
-            "files_changed": len(files),
+            "files_inspected": index.total_files,
+            "files_changed": index.total_files,
             "impacted_files": 0,
-            "summary": f"Full audit completed. Indexed {len(files)} files across {len(subsystems)} subsystems in {duration}s.",
+            "summary": f"Project Map initialized. Indexed {index.total_files} files across {len(subsystems)} subsystems in {duration}s.",
         })
 
-        logger.info(f"Full project audit completed: {len(files)} files indexed in {duration}s.")
+        logger.info(f"Project Map generated successfully: {index.total_files} files indexed in {duration}s.")
         return project_map
 
     def generate_project_map_markdown(self, project_map: Dict[str, Any]) -> str:
-        """Generates high-density structured Markdown map of the workspace."""
+        """
+        Generates structured Markdown representation of the workspace knowledge.
+        Provides compressed understanding without copying raw source code.
+        """
         lines = []
         name = project_map.get("project_name", "Workspace")
         tech = project_map.get("tech_stack", {})
+        git = project_map.get("git_state", {})
         subsystems = project_map.get("subsystems", {})
         files = project_map.get("files", {})
+        manifests = project_map.get("manifests", [])
+        entry_points = project_map.get("entry_points", [])
+        source_dirs = project_map.get("source_directories", [])
+        test_dirs = project_map.get("test_directories", [])
+        doc_dirs = project_map.get("doc_directories", [])
+        script_dirs = project_map.get("script_directories", [])
 
         lines.append(f"# Project Map: {name}")
+        lines.append(f"**Root Path**: `{project_map.get('root_path', '')}`  ")
         lines.append(f"**Last Audited**: {project_map.get('last_audited', 'N/A')}  ")
-        lines.append(f"**Total Tracked Files**: {project_map.get('total_files', 0)}  ")
+        lines.append(f"**Total Tracked Files**: {project_map.get('total_files', 0)} files ({round(project_map.get('total_size_bytes', 0) / 1024, 1)} KB)  ")
+        if git.get("is_git_repo"):
+            clean_str = "Clean" if git.get("is_clean") else f"{git.get('modified_count', 0)} modified, {git.get('untracked_count', 0)} untracked"
+            lines.append(f"**Git Status**: Branch `{git.get('current_branch', 'main')}` (Commit `{git.get('head_commit', 'HEAD')}`, {clean_str})  ")
         lines.append("")
 
-        # Technology Stack
-        lines.append("## Technology Stack & Architecture")
+        # 1. Tech Stack
+        lines.append("## 1. Technology Stack & Frameworks")
         langs = ", ".join(tech.get("languages", [])) or "Detected generic"
-        fworks = ", ".join(tech.get("frameworks", [])) or "Standard modules"
+        fworks = ", ".join(tech.get("frameworks", [])) or "Standard libraries"
         btools = ", ".join(tech.get("build_tools", [])) or "None"
-        entries = ", ".join(tech.get("entry_points", [])) or "None detected"
-
         lines.append(f"- **Languages**: {langs}")
-        lines.append(f"- **Frameworks / Libraries**: {fworks}")
+        lines.append(f"- **Frameworks / UI / Server**: {fworks}")
         lines.append(f"- **Build / Package Tools**: {btools}")
-        lines.append(f"- **Primary Entry Points**: `{entries}`")
         lines.append("")
 
-        # Subsystems
-        lines.append("## Architectural Subsystems")
+        # 2. Entry Points & Configurations
+        lines.append("## 2. Entry Points & Configuration Manifests")
+        if entry_points:
+            lines.append(f"- **Primary Entry Points**: {', '.join([f'`{ep}`' for ep in entry_points])}")
+        else:
+            lines.append("- **Primary Entry Points**: None detected")
+        if manifests:
+            lines.append(f"- **Dependency Manifests**: {', '.join([f'`{m}`' for m in manifests])}")
+        lines.append("")
+
+        # 3. Project Structure
+        lines.append("## 3. Project Structure & Directory Organization")
+        lines.append(f"- **Source Directories**: {', '.join([f'`{d}/`' for d in source_dirs]) or 'Root'}")
+        lines.append(f"- **Test Directories**: {', '.join([f'`{d}/`' for d in test_dirs]) or 'None'}")
+        lines.append(f"- **Documentation Directories**: {', '.join([f'`{d}/`' for d in doc_dirs]) or 'Root'}")
+        lines.append(f"- **Script Directories**: {', '.join([f'`{d}/`' for d in script_dirs]) or 'None'}")
+        lines.append("")
+
+        # 4. Major Subsystems & Architecture
+        lines.append("## 4. Architectural Subsystems")
         for sub_name, sub in sorted(subsystems.items()):
-            file_count = len(sub.get("files", []))
-            lines.append(f"### Subsystem: `{sub_name}` ({file_count} files)")
+            sub_files = sub.get("files", [])
+            lines.append(f"### Subsystem: `{sub_name}` ({len(sub_files)} files)")
             lines.append(f"{sub.get('description', '')}")
             lines.append("")
-            lines.append("| File | Purpose | Symbols / Exports | Dependencies |")
+            lines.append("| File Path | Inferred Purpose | Exported Symbols / Interfaces | Dependencies |")
             lines.append("| :--- | :--- | :--- | :--- |")
 
-            for fp in sub.get("files", [])[:20]:
+            for fp in sub_files[:25]:
                 frec = files.get(fp, {})
                 purpose = frec.get("purpose", "Module component")
                 symbols_list = frec.get("symbols", [])
@@ -183,8 +215,8 @@ class ProjectMapEngine:
                 deps_str = f"{len(deps_list)} files" if deps_list else "-"
                 lines.append(f"| `{fp}` | {purpose} | `{symbols_str}` | {deps_str} |")
 
-            if len(sub.get("files", [])) > 20:
-                lines.append(f"| *...and {len(sub.get('files', [])) - 20} more files* | | | |")
+            if len(sub_files) > 25:
+                lines.append(f"| *...and {len(sub_files) - 25} more files* | | | |")
             lines.append("")
 
         return "\n".join(lines)
@@ -200,18 +232,6 @@ class ProjectMapEngine:
             logger.warning(f"Failed to load project map: {e}")
             return None
 
-    def get_subsystem_info(self, subsystem_name: str) -> Optional[Dict[str, Any]]:
-        pmap = self.load_project_map()
-        if not pmap:
-            return None
-        return pmap.get("subsystems", {}).get(subsystem_name)
-
-    def get_file_info(self, rel_path: str) -> Optional[Dict[str, Any]]:
-        pmap = self.load_project_map()
-        if not pmap:
-            return None
-        return pmap.get("files", {}).get(rel_path)
-
     def query_relevant_context(self, objective: str, max_files: int = 15) -> Dict[str, Any]:
         """
         Retrieves targeted, hierarchical project context matching a user objective
@@ -219,7 +239,6 @@ class ProjectMapEngine:
         """
         pmap = self.load_project_map()
         if not pmap:
-            # Audit on the fly if needed
             pmap = self.perform_full_audit(trigger="ON_DEMAND_QUERY")
 
         keywords = set(re.findall(r'[a-zA-Z0-9_]{3,}', objective.lower()))
@@ -252,18 +271,104 @@ class ProjectMapEngine:
                     "purpose": frec.get("purpose", ""),
                     "symbols": frec.get("symbols", []),
                     "dependencies": frec.get("dependencies", []),
-                    "dependents": frec.get("dependents", []),
                 })
 
         matched_files.sort(key=lambda x: x["score"], reverse=True)
+        top_files = matched_files[:max_files]
 
         return {
-            "project_name": pmap.get("project_name"),
-            "tech_stack": pmap.get("tech_stack"),
-            "matched_subsystems": sorted(list(matched_subsystems)),
-            "relevant_files": matched_files[:max_files],
+            "objective": objective,
             "total_matches": len(matched_files),
+            "matched_subsystems": sorted(list(matched_subsystems)),
+            "matched_files": top_files,
+            "relevant_files": top_files,
+            "tech_stack": pmap.get("tech_stack", {}),
+            "entry_points": pmap.get("entry_points", []),
         }
+
+    def get_audit_history(self) -> List[Dict[str, Any]]:
+        if not self.audit_history_path.exists():
+            return []
+        try:
+            with open(self.audit_history_path, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            return []
+
+    def _build_dependency_graph(
+        self, index: RepositoryIndex
+    ) -> Tuple[Dict[str, List[str]], Dict[str, List[str]]]:
+        forward_graph: Dict[str, List[str]] = {}
+        reverse_graph: Dict[str, List[str]] = {}
+
+        file_paths = list(index.files.keys())
+        path_set = set(file_paths)
+
+        for p in file_paths:
+            forward_graph[p] = []
+            reverse_graph[p] = []
+
+        for p, meta in index.files.items():
+            for imp in meta.imports:
+                matched_file = self._resolve_import_to_file(p, imp, path_set)
+                if matched_file and matched_file != p:
+                    if matched_file not in forward_graph[p]:
+                        forward_graph[p].append(matched_file)
+                    if p not in reverse_graph[matched_file]:
+                        reverse_graph[matched_file].append(p)
+
+        return forward_graph, reverse_graph
+
+    def _resolve_import_to_file(self, source_path: str, import_str: str, path_set: Set[str]) -> Optional[str]:
+        if import_str.startswith("."):
+            src_dir = os.path.dirname(source_path)
+            cand_base = os.path.normpath(os.path.join(src_dir, import_str))
+            for ext in ("", ".ts", ".tsx", ".js", ".jsx", ".dart", ".py"):
+                cand = cand_base + ext
+                if cand in path_set:
+                    return cand
+                cand_idx = os.path.join(cand_base, f"index{ext}")
+                if cand_idx in path_set:
+                    return cand_idx
+
+        normalized = import_str.replace(".", "/")
+        for ext in ("", ".py", ".dart", ".ts", ".js"):
+            cand = normalized + ext
+            if cand in path_set:
+                return cand
+            for p in path_set:
+                if p.endswith("/" + cand) or p == cand:
+                    return p
+
+        return None
+
+    def _cluster_subsystems(
+        self, index: RepositoryIndex, forward_graph: Dict[str, List[str]]
+    ) -> Dict[str, Dict[str, Any]]:
+        subsystems: Dict[str, Dict[str, Any]] = {}
+
+        for path, meta in index.files.items():
+            parts = path.split("/")
+            if len(parts) > 1:
+                subsystem_name = parts[0]
+                if len(parts) > 2 and parts[0] in ("src", "lib", "core", "app", "client"):
+                    subsystem_name = f"{parts[0]}/{parts[1]}"
+            else:
+                subsystem_name = "root"
+
+            if subsystem_name not in subsystems:
+                subsystems[subsystem_name] = {
+                    "name": subsystem_name,
+                    "description": f"Architectural subsystem for {subsystem_name}",
+                    "files": [],
+                    "total_size": 0,
+                    "primary_language": meta.extension,
+                }
+
+            subsystems[subsystem_name]["files"].append(path)
+            subsystems[subsystem_name]["total_size"] += meta.size
+
+        return subsystems
 
     def _append_audit_history(self, entry: Dict[str, Any]):
         history = []
@@ -275,20 +380,10 @@ class ProjectMapEngine:
                 history = []
 
         history.insert(0, entry)
-        # Keep last 50 audit entries
         history = history[:50]
 
         try:
             with open(self.audit_history_path, "w", encoding="utf-8") as f:
                 json.dump(history, f, indent=2)
         except Exception as e:
-            logger.warning(f"Could not save audit history: {e}")
-
-    def get_audit_history(self) -> List[Dict[str, Any]]:
-        if not self.audit_history_path.exists():
-            return []
-        try:
-            with open(self.audit_history_path, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except Exception:
-            return []
+            logger.warning(f"Failed to append audit history: {e}")
