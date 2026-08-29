@@ -475,8 +475,14 @@ class RepositoryScanner:
         frameworks: Set[str] = set()
         build_tools: Set[str] = set()
         entry_points: List[str] = []
+        installed_packages: Dict[str, str] = {}
+        all_imports: Set[str] = set()
 
         for rel_path, meta in files.items():
+            for imp in meta.imports:
+                clean_imp = imp.split('/')[0] if not imp.startswith('@') else '/'.join(imp.split('/')[:2])
+                all_imports.add(clean_imp)
+
             fname = meta.name
             if fname in self.MANIFEST_MAP:
                 lang, btool = self.MANIFEST_MAP[fname]
@@ -488,10 +494,10 @@ class RepositoryScanner:
                     if fname == "package.json":
                         pj = json.loads(content)
                         deps = {**pj.get("dependencies", {}), **pj.get("devDependencies", {})}
-                        if "react" in deps: frameworks.add("React")
+                        installed_packages.update({k: str(v) for k, v in deps.items()})
                         if "next" in deps: frameworks.add("Next.js")
+                        if "react" in deps: frameworks.add("React")
                         if "vue" in deps: frameworks.add("Vue")
-                        if "three" in deps or "@types/three" in deps: frameworks.add("Three.js")
                         if "express" in deps: frameworks.add("Express")
                         if "tailwindcss" in deps: frameworks.add("Tailwind CSS")
                         if "main" in pj: entry_points.append(pj["main"])
@@ -504,18 +510,33 @@ class RepositoryScanner:
                 except Exception:
                     pass
 
-            # Detect standard entry points
+            # Detect standard entry points (App router, index, main, App)
             if fname in (
                 "main.py", "app.py", "server.py", "index.ts", "index.js",
                 "main.dart", "App.tsx", "main.go", "main.rs", "index.html"
+            ) or rel_path in (
+                "src/app/layout.tsx", "src/app/page.tsx", "src/app/globals.css",
+                "app/layout.tsx", "app/page.tsx", "app/globals.css"
             ):
                 entry_points.append(rel_path)
+
+        # Verified libraries: installed packages that are actually imported in source code
+        verified_used = [pkg for pkg in installed_packages.keys() if pkg in all_imports]
+
+        # Add Three.js or GSAP to frameworks ONLY if verified imported in source code
+        if any("three" in imp.lower() for imp in all_imports):
+            frameworks.add("Three.js")
+        if any("gsap" in imp.lower() for imp in all_imports):
+            frameworks.add("GSAP")
 
         return {
             "languages": sorted(list(languages)),
             "frameworks": sorted(list(frameworks)),
             "build_tools": sorted(list(build_tools)),
             "entry_points": sorted(list(set(entry_points))),
+            "installed_packages": installed_packages,
+            "verified_used_libraries": sorted(verified_used),
+            "all_imports": sorted(list(all_imports)),
         }
 
     def _detect_git_state(self) -> GitState:

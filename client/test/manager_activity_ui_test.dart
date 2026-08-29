@@ -197,6 +197,11 @@ Mapped the project and prepared 2 tasks. Workers are currently disabled.
       );
       await tester.pumpAndSettle();
 
+      expect(find.text('Improve the pitch graph spacing.'), findsOneWidget);
+      expect(find.text('Manager Orchestration'), findsOneWidget);
+      expect(find.text('Workers Inactive'), findsOneWidget);
+    });
+
     testWidgets('DocumentStreamView renders compact tool execution row with diff badges',
         (WidgetTester tester) async {
       final messages = [

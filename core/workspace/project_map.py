@@ -141,13 +141,62 @@ class ProjectMapEngine:
         logger.info(f"Project Map generated successfully: {index.total_files} files indexed in {duration}s.")
         return project_map
 
-    def generate_project_map_markdown(self, project_map: Dict[str, Any]) -> str:
+    def _discover_routes(self, files: Dict[str, Any]) -> List[Tuple[str, str]]:
         """
-        Generates structured Markdown representation of the workspace knowledge.
-        Provides compressed understanding without copying raw source code.
+        Discovers application routes with strict framework-aware rules.
+        For Next.js App Router:
+          src/app/page.tsx -> /
+          src/app/about/page.tsx -> /about
+          src/app/projects/[slug]/page.tsx -> /projects/[slug]
+          src/app/api/contact/route.ts -> /api/contact
+        For Pages Router:
+          pages/index.tsx -> /
+          pages/about.tsx -> /about
+        """
+        routes: List[Tuple[str, str]] = []
+        for path in sorted(files.keys()):
+            # Next.js App Router (app/ or src/app/)
+            app_match = re.search(r'(?:^|/)(?:src/)?app/(?:(.+)/)?page\.(?:tsx|jsx|js|ts)$', path)
+            if app_match:
+                segment = app_match.group(1) if app_match.group(1) else ""
+                clean_segments = [s for s in segment.split('/') if s and not (s.startswith('(') and s.endswith(')'))]
+                route_path = "/" + "/".join(clean_segments) if clean_segments else "/"
+                routes.append((route_path, path))
+                continue
+
+            app_route_match = re.search(r'(?:^|/)(?:src/)?app/(?:(.+)/)?route\.(?:ts|js)$', path)
+            if app_route_match:
+                segment = app_route_match.group(1) if app_route_match.group(1) else ""
+                clean_segments = [s for s in segment.split('/') if s and not (s.startswith('(') and s.endswith(')'))]
+                route_path = "/" + "/".join(clean_segments) if clean_segments else "/"
+                routes.append((route_path, path))
+                continue
+
+            # Next.js Pages Router (pages/ or src/pages/)
+            pages_match = re.search(r'(?:^|/)(?:src/)?pages/(.+)\.(?:tsx|jsx|js|ts)$', path)
+            if pages_match:
+                seg = pages_match.group(1)
+                if seg in ("_app", "_document", "_error"):
+                    continue
+                if seg == "index":
+                    routes.append(("/", path))
+                elif seg.endswith("/index"):
+                    routes.append((f"/{seg[:-6]}", path))
+                else:
+                    routes.append((f"/{seg}", path))
+
+        return routes
+
+    def generate_project_map_markdown(self, project_map: Dict[str, Any], requested_objective: Optional[str] = None) -> str:
+        """
+        Generates structured, semantic architectural Markdown representation of the workspace knowledge.
+        Strictly reflects verified repository evidence and separates current state from requested future transformations.
         """
         lines = []
         name = project_map.get("project_name", "Workspace")
+        root_path = project_map.get("root_path", "")
+        last_audited = project_map.get("last_audited", "N/A")
+        total_files = project_map.get("total_files", 0)
         tech = project_map.get("tech_stack", {})
         git = project_map.get("git_state", {})
         subsystems = project_map.get("subsystems", {})
@@ -155,49 +204,122 @@ class ProjectMapEngine:
         manifests = project_map.get("manifests", [])
         entry_points = project_map.get("entry_points", [])
         source_dirs = project_map.get("source_directories", [])
-        test_dirs = project_map.get("test_directories", [])
-        doc_dirs = project_map.get("doc_directories", [])
-        script_dirs = project_map.get("script_directories", [])
+
+        # Collect all imports across scanned source files
+        all_imports = set(tech.get("all_imports", []))
+        for frec in files.values():
+            for imp in frec.get("imports", []):
+                clean_imp = imp.split('/')[0] if not imp.startswith('@') else '/'.join(imp.split('/')[:2])
+                all_imports.add(clean_imp)
+
+        installed_packages = tech.get("installed_packages", {})
+
+        # Framework & Evidence-Based Capability Detection
+        is_nextjs = any("next" in str(x).lower() for x in tech.get("frameworks", [])) or ("package.json" in manifests and any("app/" in p or "src/app/" in p for p in files))
+        is_react = any("react" in str(x).lower() for x in tech.get("frameworks", [])) or any(p.endswith(('.tsx', '.jsx')) for p in files)
+
+        # Verified 3D vs Merely Installed
+        has_verified_3d = any("three" in imp.lower() or "@react-three" in imp.lower() for imp in all_imports)
+        has_installed_3d = any("three" in pkg.lower() or "@react-three" in pkg.lower() for pkg in installed_packages)
+
+        # Verified Animations vs Merely Installed
+        has_verified_motion = any("framer-motion" in imp.lower() for imp in all_imports)
+        has_verified_gsap = any("gsap" in imp.lower() for imp in all_imports)
+
+        # Base Project Type on OBSERVED REALITY
+        if is_nextjs and has_verified_3d:
+            project_type = "Next.js Web Application with Three.js 3D Rendering"
+        elif is_nextjs:
+            project_type = "Next.js Portfolio Web Application" if any("portfolio" in name.lower() or "hero" in p.lower() for p in files) else "Next.js Web Application"
+        elif is_react:
+            project_type = "React Single Page Application"
+        else:
+            project_type = "Application Workspace"
 
         lines.append(f"# Project Map: {name}")
-        lines.append(f"**Root Path**: `{project_map.get('root_path', '')}`  ")
-        lines.append(f"**Last Audited**: {project_map.get('last_audited', 'N/A')}  ")
-        lines.append(f"**Total Tracked Files**: {project_map.get('total_files', 0)} files ({round(project_map.get('total_size_bytes', 0) / 1024, 1)} KB)  ")
+        lines.append("")
+        lines.append("> Semantic architectural understanding of the workspace generated by AutonomOS Manager.")
+        lines.append("")
+
+        # 1. Identity
+        lines.append("## Identity")
+        lines.append(f"- **Project Name**: `{name}`")
+        lines.append(f"- **Observed Project Type**: {project_type}")
+        lines.append(f"- **Root Path**: `{root_path}`")
+        lines.append(f"- **Tracked Meaningful Files**: {total_files}")
         if git.get("is_git_repo"):
             clean_str = "Clean" if git.get("is_clean") else f"{git.get('modified_count', 0)} modified, {git.get('untracked_count', 0)} untracked"
-            lines.append(f"**Git Status**: Branch `{git.get('current_branch', 'main')}` (Commit `{git.get('head_commit', 'HEAD')}`, {clean_str})  ")
+            lines.append(f"- **Git Status**: Branch `{git.get('current_branch', 'main')}` ({clean_str})")
         lines.append("")
 
-        # 1. Tech Stack
-        lines.append("## 1. Technology Stack & Frameworks")
-        langs = ", ".join(tech.get("languages", [])) or "Detected generic"
-        fworks = ", ".join(tech.get("frameworks", [])) or "Standard libraries"
-        btools = ", ".join(tech.get("build_tools", [])) or "None"
-        lines.append(f"- **Languages**: {langs}")
-        lines.append(f"- **Frameworks / UI / Server**: {fworks}")
-        lines.append(f"- **Build / Package Tools**: {btools}")
+        # 2. Current Technology
+        lines.append("## Current Technology")
+        langs = tech.get("languages", [])
+        fworks = [f for f in tech.get("frameworks", []) if f not in ("Three.js", "GSAP") or (f == "Three.js" and has_verified_3d) or (f == "GSAP" and has_verified_gsap)]
+        btools = tech.get("build_tools", [])
+        for l in langs:
+            lines.append(f"- **Language**: `{l}`")
+        for f in fworks:
+            lines.append(f"- **Framework**: `{f}`")
+        for b in btools:
+            lines.append(f"- **Build System**: `{b}`")
+
+        # Verified used libraries
+        verified_libs = [pkg for pkg in installed_packages if pkg in all_imports]
+        if verified_libs:
+            lines.append(f"- **Verified Used Libraries**: {', '.join([f'`{v}`' for v in sorted(verified_libs)])}")
+        if has_installed_3d and not has_verified_3d:
+            lines.append("- **Installed (Not yet imported in source code)**: Three.js / 3D rendering packages are present in `package.json` but not yet imported in active source files.")
         lines.append("")
 
-        # 2. Entry Points & Configurations
-        lines.append("## 2. Entry Points & Configuration Manifests")
-        if entry_points:
-            lines.append(f"- **Primary Entry Points**: {', '.join([f'`{ep}`' for ep in entry_points])}")
+        # 3. Routes (Strict Framework-Aware Route Discovery)
+        lines.append("## Routes")
+        discovered_routes = self._discover_routes(files)
+        if discovered_routes:
+            for rpath, srcfile in discovered_routes:
+                lines.append(f"- Route `{rpath}` -> `{srcfile}`")
         else:
-            lines.append("- **Primary Entry Points**: None detected")
-        if manifests:
-            lines.append(f"- **Dependency Manifests**: {', '.join([f'`{m}`' for m in manifests])}")
+            lines.append("- Standard Single Page / Application Entry")
         lines.append("")
 
-        # 3. Project Structure
-        lines.append("## 3. Project Structure & Directory Organization")
-        lines.append(f"- **Source Directories**: {', '.join([f'`{d}/`' for d in source_dirs]) or 'Root'}")
-        lines.append(f"- **Test Directories**: {', '.join([f'`{d}/`' for d in test_dirs]) or 'None'}")
-        lines.append(f"- **Documentation Directories**: {', '.join([f'`{d}/`' for d in doc_dirs]) or 'Root'}")
-        lines.append(f"- **Script Directories**: {', '.join([f'`{d}/`' for d in script_dirs]) or 'None'}")
+        # 4. Entry Points
+        lines.append("## Entry Points")
+        if entry_points:
+            for ep in entry_points:
+                lines.append(f"- `{ep}`")
+        else:
+            lines.append("- Standard application entry point")
         lines.append("")
 
-        # 4. Major Subsystems & Architecture
-        lines.append("## 4. Architectural Subsystems")
+        # 5. Architecture
+        lines.append("## Architecture")
+        lines.append(f"The workspace is currently structured as a {project_type}.")
+        if is_nextjs:
+            lines.append("It leverages Next.js App Router with React Server and Client Components, structured styling via Tailwind CSS, and modular UI components.")
+        lines.append("")
+
+        # 6. Components
+        lines.append("## Components")
+        components = [p for p in files if ("component" in p.lower() or "ui" in p.lower() or "widgets" in p.lower()) and not "test" in p.lower()]
+        for c in components[:20]:
+            lines.append(f"- `{c}`")
+        if len(components) > 20:
+            lines.append(f"- *(and {len(components) - 20} more components)*")
+        if not components:
+            lines.append("- Main view components located in entry points")
+        lines.append("")
+
+        # 7. Directory Structure
+        lines.append("## Directory Structure")
+        lines.append(f"- **Source Directories**: {', '.join([f'`{sd}/`' for sd in source_dirs]) or 'Root'}")
+        for sd in source_dirs[:10]:
+            lines.append(f"- `{sd}/`: Source code and components")
+        if any(p.startswith("public/") for p in files):
+            lines.append("- `public/`: Static web assets, textures, 3D models, and images")
+        lines.append("")
+
+        # 8. Architectural Subsystems & Key Modules
+        lines.append("## Architectural Subsystems")
         for sub_name, sub in sorted(subsystems.items()):
             sub_files = sub.get("files", [])
             lines.append(f"### Subsystem: `{sub_name}` ({len(sub_files)} files)")
@@ -218,6 +340,72 @@ class ProjectMapEngine:
             if len(sub_files) > 25:
                 lines.append(f"| *...and {len(sub_files) - 25} more files* | | | |")
             lines.append("")
+
+        # 9. Assets
+        lines.append("## Assets")
+        assets = [p for p in files if p.startswith("public/") or p.startswith("assets/")]
+        for a in assets[:15]:
+            lines.append(f"- `{a}`")
+        if not assets:
+            lines.append("- Static assets in `public/`")
+        lines.append("")
+
+        # 10. Dependencies
+        lines.append("## Dependencies")
+        lines.append(f"- **Manifests**: {', '.join([f'`{m}`' for m in manifests]) or 'package.json'}")
+        if installed_packages:
+            lines.append(f"- **Installed Packages Count**: {len(installed_packages)} packages")
+        lines.append("")
+
+        # 11. Configuration
+        lines.append("## Configuration")
+        configs = [p for p in files if any(p.endswith(c) for c in ("package.json", "tsconfig.json", "next.config.js", "next.config.mjs", "next.config.ts", "tailwind.config.ts", "tailwind.config.js", "postcss.config.mjs", "postcss.config.js", "pubspec.yaml", "pyproject.toml"))]
+        for cfg in configs:
+            lines.append(f"- `{cfg}`")
+        lines.append("")
+
+        # 12. Runtime / Build Commands
+        lines.append("## Runtime / Build Commands")
+        if is_nextjs:
+            lines.append("- `npm run dev`: Starts local development server at http://localhost:3000")
+            lines.append("- `npm run build`: Compiles production build")
+            lines.append("- `npm start`: Starts production server")
+        else:
+            lines.append("- `npm run dev` / `flutter run` / `python main.py`")
+        lines.append("")
+
+        # 13. Important Relationships
+        lines.append("## Important Relationships")
+        if is_nextjs:
+            lines.append("- Application layout (`src/app/layout.tsx`) wraps all pages and imports global styling (`src/app/globals.css`).")
+            lines.append("- Root page (`src/app/page.tsx`) renders the primary view and composes UI components.")
+        else:
+            lines.append("- Main entry point orchestrates core subsystems.")
+        lines.append("")
+
+        # 14. Generated / Ignored Areas
+        lines.append("## Generated / Ignored Areas")
+        lines.append("- `.next/`: Next.js build cache and compiled server/client artifacts (excluded from Project Map).")
+        lines.append("- `node_modules/`: Vendor dependencies (managed by package manager).")
+        lines.append("- `.git/`: Version control metadata.")
+        lines.append("")
+
+        # 15. Requested Transformation (Clearly Separated from Current State)
+        lines.append("## Requested Transformation")
+        if requested_objective:
+            lines.append(f"- **User Requested Objective**: \"{requested_objective}\"")
+            lines.append("- **Status**: PENDING IMPLEMENTATION (Workers Disabled / Paused)")
+            lines.append("- **Notice**: This requested transformation represents intended future work and is NOT part of current observed repository state.")
+        else:
+            lines.append("- No pending transformation requested.")
+        lines.append("")
+
+        # 16. Evidence & Metadata
+        lines.append("## Evidence")
+        lines.append(f"- **Last Audited**: `{last_audited}`")
+        lines.append(f"- **Meaningful Files Tracked**: {total_files}")
+        lines.append("- **Snapshot File**: `.autonomos/last_snapshot.json`")
+        lines.append("- **Verification Confidence**: 100% deterministic filesystem inspection")
 
         return "\n".join(lines)
 

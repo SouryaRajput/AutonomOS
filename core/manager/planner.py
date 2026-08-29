@@ -59,6 +59,7 @@ class DelegationPlan:
     relevant_files: List[str]
     subsystems_involved: List[str]
     workers_disabled: bool = True
+    status: str = "PAUSED (Workers Disabled)"
     created_at: str = field(default_factory=utc_now)
     summary: str = ""
 
@@ -71,6 +72,7 @@ class DelegationPlan:
             "relevant_files": self.relevant_files,
             "subsystems_involved": self.subsystems_involved,
             "workers_disabled": self.workers_disabled,
+            "status": self.status,
             "created_at": self.created_at,
             "summary": self.summary,
         }
@@ -86,6 +88,7 @@ class DelegationPlan:
             relevant_files=data.get("relevant_files", []),
             subsystems_involved=data.get("subsystems_involved", []),
             workers_disabled=data.get("workers_disabled", True),
+            status=data.get("status", "PAUSED (Workers Disabled)"),
             created_at=data.get("created_at", utc_now()),
             summary=data.get("summary", ""),
         )
