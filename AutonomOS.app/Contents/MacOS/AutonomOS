@@ -1,0 +1,42 @@
+#!/bin/bash
+set -e
+
+# AutonomOS Native macOS Launcher
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT_DIR="$(cd "$SCRIPT_DIR/../../.." && pwd)"
+
+# Ensure common paths are in PATH
+export PATH="$HOME/Downloads/development/flutter/bin:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:$PATH"
+
+# 1. Start Python Backend Server if not already active on port 8000
+SERVER_PID=""
+if ! lsof -i :8000 >/dev/null 2>&1; then
+    cd "$ROOT_DIR"
+    python3 app/server.py --port 8000 --db "$ROOT_DIR/autonomos.db" > "$ROOT_DIR/server.log" 2>&1 &
+    SERVER_PID=$!
+    
+    # Wait for server /health endpoint to come alive
+    for i in {1..30}; do
+        if curl -s http://127.0.0.1:8000/health >/dev/null 2>&1; then
+            break
+        fi
+        sleep 0.1
+    done
+fi
+
+cleanup() {
+    if [ -n "$SERVER_PID" ]; then
+        kill "$SERVER_PID" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT INT TERM
+
+# 2. Launch the Flutter GUI Application
+RELEASE_APP="$ROOT_DIR/client/build/macos/Build/Products/Release/client.app"
+
+if [ -d "$RELEASE_APP" ]; then
+    open -W "$RELEASE_APP"
+else
+    cd "$ROOT_DIR/client"
+    flutter run -d macos
+fi
