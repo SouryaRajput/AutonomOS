@@ -289,6 +289,40 @@ class WorkforceRuntime:
         # In-memory listeners for live event streaming (e.g. SSE / WebSocket / Activity feed)
         self._subscribers: list[Callable[[Event], None]] = []
 
+        # Stage 18: Interrupted task recovery on startup
+        self._recover_orphaned_tasks()
+
+    def _recover_orphaned_tasks(self) -> int:
+        """
+        Identify and recover tasks left in RUNNING or ASSIGNED states across projects after process restart.
+        Transitions them back to RETRYING or READY and frees worker locks.
+        """
+        recovered_count = 0
+        try:
+            projects = self.projects.list_projects()
+            for p in projects:
+                tasks = self.tasks.list_tasks(p.id)
+                for t in tasks:
+                    if t.status in (TaskStatus.RUNNING, TaskStatus.ASSIGNED):
+                        if t.assigned_worker:
+                            try:
+                                self.workers.update_worker_status(
+                                    worker_id=t.assigned_worker,
+                                    target_status=WorkerStatus.IDLE,
+                                    active_task_id=None,
+                                )
+                            except Exception:
+                                pass
+                        target_st = TaskStatus.RETRYING if t.attempts < t.max_attempts else TaskStatus.FAILED
+                        t.status = target_st
+                        t.assigned_worker = None
+                        self.store.save_task(t)
+                        recovered_count += 1
+                        logger.info(f"Recovered orphaned task '{t.id}' in project '{p.id}' -> {target_st.value}")
+        except Exception as err:
+            logger.warning(f"Orphaned task recovery skipped/failed: {err}")
+        return recovered_count
+
     @classmethod
     def with_sqlite(cls, db_path: str) -> "WorkforceRuntime":
         """Factory method to initialize runtime with embedded SQLite persistence."""
@@ -513,11 +547,23 @@ class WorkforceRuntime:
         excluded_sources: Optional[list[ContextSourceType]] = None,
         causation_id: Optional[str] = None,
     ) -> ContextPackage:
-        task = self.tasks.get_task(task_id)
+        try:
+            task = self.tasks.get_task(task_id)
+            proj_id = task.project_id
+            target_worker = worker_id or task.assigned_worker
+            corr_id = task.id
+        except TaskNotFoundError:
+            if task_id.startswith("mgr-state-"):
+                proj_id = task_id[len("mgr-state-"):]
+                target_worker = worker_id or "worker.manager.orchestrator"
+                corr_id = proj_id
+            else:
+                raise
+
         req = ContextRequest(
-            project_id=task.project_id,
-            task_id=task.id,
-            worker_id=worker_id or task.assigned_worker,
+            project_id=proj_id,
+            task_id=task_id,
+            worker_id=target_worker,
             budget=budget or ContextBudget(),
             focus_areas=focus_areas or [],
             required_sources=required_sources or [],
@@ -526,11 +572,11 @@ class WorkforceRuntime:
 
         req_evt = self.log_event(
             event_type=EventType.CONTEXT_REQUESTED,
-            payload={"request_id": req.request_id, "task_id": task.id, "worker_id": req.worker_id},
-            project_id=task.project_id,
-            task_id=task.id,
+            payload={"request_id": req.request_id, "task_id": task_id, "worker_id": req.worker_id},
+            project_id=proj_id,
+            task_id=task_id,
             worker_id=req.worker_id,
-            correlation_id=task.id,
+            correlation_id=corr_id,
             causation_id=causation_id,
         )
 
@@ -545,10 +591,10 @@ class WorkforceRuntime:
                 "token_estimate": package.total_estimated_tokens,
                 "warnings_count": len(package.warnings),
             },
-            project_id=task.project_id,
-            task_id=task.id,
+            project_id=proj_id,
+            task_id=task_id,
             worker_id=req.worker_id,
-            correlation_id=task.id,
+            correlation_id=corr_id,
             causation_id=req_evt.event_id,
         )
 
@@ -556,10 +602,10 @@ class WorkforceRuntime:
             self.log_event(
                 event_type=EventType.CONTEXT_WARNING,
                 payload={"warning_type": w.warning_type.value, "message": w.message, "target_id": w.target_id},
-                project_id=task.project_id,
-                task_id=task.id,
+                project_id=proj_id,
+                task_id=task_id,
                 worker_id=req.worker_id,
-                correlation_id=task.id,
+                correlation_id=corr_id,
                 causation_id=req_evt.event_id,
             )
 

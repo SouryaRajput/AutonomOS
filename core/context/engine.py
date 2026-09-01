@@ -44,7 +44,15 @@ class ContextEngine:
 
             task = self.store.get_task(request.task_id)
             if not task:
-                raise TaskNotFoundError(request.task_id)
+                if request.task_id.startswith("mgr-state-") or request.task_id.startswith("project-ctx-"):
+                    task = Task(
+                        id=request.task_id,
+                        project_id=project.id,
+                        title=f"Manager Orchestration: {project.name}",
+                        objective="Orchestrating autonomous workforce planning and task execution",
+                    )
+                else:
+                    raise TaskNotFoundError(request.task_id)
 
             # 2. Discover Candidates
             candidates, discovery_warnings = self._discover_candidates(request, task, project.root_path)

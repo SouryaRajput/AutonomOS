@@ -95,7 +95,7 @@ class TestToolPermissionsAndSecurity(unittest.TestCase):
             arguments={"path": "../../project_b/secret.txt"},
         )
         result = self.tool_runtime.execute_request(req)
-        self.assertEqual(result.status, ToolStatus.FAILED)
+        self.assertIn(result.status, (ToolStatus.FAILED, ToolStatus.DENIED))
         self.assertIn("escapes workspace boundary", result.error_message)
 
     def test_absolute_system_path_escape_blocked(self):
@@ -112,7 +112,7 @@ class TestToolPermissionsAndSecurity(unittest.TestCase):
             arguments={"path": escape_path},
         )
         result = self.tool_runtime.execute_request(req)
-        self.assertEqual(result.status, ToolStatus.FAILED)
+        self.assertIn(result.status, (ToolStatus.FAILED, ToolStatus.DENIED))
         self.assertIn("escapes workspace boundary", result.error_message)
 
     def test_unauthorized_tool_request_denied_before_execution(self):

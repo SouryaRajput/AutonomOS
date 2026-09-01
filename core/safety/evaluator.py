@@ -52,6 +52,30 @@ class SafetyEvaluator:
         target_path_str = str(request.arguments.get("path") or request.arguments.get("image_path") or "")
         clean_path = target_path_str.strip().lstrip("/\\")
 
+        # 0. Workspace Boundary Escape Check (Path Traversal Protection)
+        if target_path_str and project and project.root_path:
+            root_resolved = Path(project.root_path).resolve()
+            try:
+                target_resolved = (root_resolved / target_path_str).resolve()
+                if not (target_resolved == root_resolved or target_resolved.is_relative_to(root_resolved)):
+                    reasons.append(f"Target path '{target_path_str}' escapes workspace boundary ('{project.root_path}'). Operation denied.")
+                    return SafetyDecision(
+                        decision=SafetyAction.DENY,
+                        risk_level=RiskLevel.CRITICAL,
+                        reasons=reasons,
+                        required_approval=False,
+                        metadata={"target_path": target_path_str, "project_root": project.root_path},
+                    )
+            except Exception as path_err:
+                reasons.append(f"Invalid target path structure '{target_path_str}': {path_err}")
+                return SafetyDecision(
+                    decision=SafetyAction.DENY,
+                    risk_level=RiskLevel.CRITICAL,
+                    reasons=reasons,
+                    required_approval=False,
+                    metadata={"target_path": target_path_str, "error": str(path_err)},
+                )
+
         # 1. Protected Paths Check (Critical Risk)
         for protected in cfg.protected_paths:
             clean_prot = protected.strip().lstrip("/\\")

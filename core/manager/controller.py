@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from typing import TYPE_CHECKING, Any, Callable, Optional
 import uuid
 
@@ -44,6 +45,7 @@ from core.manager.types import (
     ManagerActionType,
     PlanStatus,
 )
+from core.autonomy.types import ActionCategory
 from core.models import Artifact, Project, Task, WorkerManifest
 from core.task.state_machine import TaskStateMachine
 
@@ -71,11 +73,19 @@ class ManagerController:
         self.config = config or ManagerConfig()
         self.agent = agent or ManagerAgent(inference_gateway=runtime.inference, config=self.config)
 
-        # Operational tracking per project
+        # Concurrency & Operational tracking per project
+        self._lock = threading.RLock()
+        self._project_locks: dict[str, threading.Lock] = {}
         self._consecutive_idle_cycles: dict[str, int] = {}
         self._cycle_counters: dict[str, int] = {}
         self._active_plans: dict[str, Plan] = {}
         self._pending_user_questions: dict[str, list[dict[str, Any]]] = {}
+
+    def _get_project_lock(self, project_id: str) -> threading.Lock:
+        with self._lock:
+            if project_id not in self._project_locks:
+                self._project_locks[project_id] = threading.Lock()
+            return self._project_locks[project_id]
 
     def get_status(self, project_id: str) -> ManagerStatus:
         """Query real-time operational status for a project."""
@@ -171,174 +181,190 @@ class ManagerController:
         Execute a single deterministic Manager orchestration cycle.
         Gathers state, queries ManagerAgent, validates proposals, and executes actions.
         """
-        cycle_id = f"cycle-{uuid.uuid4().hex[:8]}"
-        self._cycle_counters[project_id] = self._cycle_counters.get(project_id, 0) + 1
-        current_cycle_num = self._cycle_counters[project_id]
+        lock = self._get_project_lock(project_id)
+        with lock:
+            cycle_id = f"cycle-{uuid.uuid4().hex[:8]}"
 
-        # 1. Cost & Safety Guardrails Pre-Check
-        if self.agent.total_cost_accumulated >= self.config.max_cost_per_project:
-            self.runtime.log_event(
-                event_type=EventType.MANAGER_ESCALATED,
-                payload={
-                    "title": "Cost limit exceeded",
-                    "reason": f"Accumulated cost ${self.agent.total_cost_accumulated:.4f} exceeded limit ${self.config.max_cost_per_project:.2f}",
-                },
+            # Stagnation Pre-Check: Do not waste inference tokens if project is already stagnant/escalated and no new trigger
+            idle_cycles = self._consecutive_idle_cycles.get(project_id, 0)
+            if idle_cycles >= self.config.max_cycles_without_progress and not feedback_message and not trigger_event:
+                return CycleResult(
+                    cycle_id=cycle_id,
+                    decision=None,
+                    escalated=True,
+                    waiting=True,
+                    status_summary=f"Project is paused in escalation due to stagnation ({idle_cycles} idle cycles). Awaiting user guidance.",
+                )
+
+            self._cycle_counters[project_id] = self._cycle_counters.get(project_id, 0) + 1
+            current_cycle_num = self._cycle_counters[project_id]
+
+            # 1. Cost & Safety Guardrails Pre-Check
+            if self.agent.total_cost_accumulated >= self.config.max_cost_per_project:
+                self.runtime.log_event(
+                    event_type=EventType.MANAGER_ESCALATED,
+                    payload={
+                        "title": "Cost limit exceeded",
+                        "reason": f"Accumulated cost ${self.agent.total_cost_accumulated:.4f} exceeded limit ${self.config.max_cost_per_project:.2f}",
+                    },
+                    project_id=project_id,
+                    source=EventSource.MANAGER,
+                )
+                return CycleResult(
+                    cycle_id=cycle_id,
+                    decision=None,
+                    escalated=True,
+                    status_summary=f"Cost budget of ${self.config.max_cost_per_project:.2f} exceeded.",
+                )
+
+            # 2. Gather State from Runtime
+            state = self.gather_state(project_id)
+
+            # 3. Assemble Bounded Context Package via Context Engine
+            context_pkg: Optional[ContextPackage] = None
+            try:
+                context_pkg = self.runtime.request_context(
+                    task_id=f"mgr-state-{project_id}",
+                    worker_id="worker.manager.orchestrator",
+                    budget=self.config.context_budget,
+                )
+            except Exception as ctx_err:
+                logger.warning(f"Context retrieval for Manager cycle returned warning: {ctx_err}")
+
+            # 4. Emit MANAGER_CYCLE_STARTED & MANAGER_CONTEXT_BUILT
+            start_evt = self.runtime.log_event(
+                event_type=EventType.MANAGER_CYCLE_STARTED,
+                payload={"cycle_id": cycle_id, "cycle_number": current_cycle_num, "trigger": trigger_event.event_type.value if trigger_event else "MANUAL"},
                 project_id=project_id,
                 source=EventSource.MANAGER,
+                correlation_id=project_id,
             )
-            return CycleResult(
+
+            if context_pkg:
+                self.runtime.log_event(
+                    event_type=EventType.MANAGER_CONTEXT_BUILT,
+                    payload={"cycle_id": cycle_id, "package_id": context_pkg.request_id, "items_count": len(context_pkg.items), "total_tokens": context_pkg.total_estimated_tokens},
+                    project_id=project_id,
+                    source=EventSource.MANAGER,
+                    correlation_id=project_id,
+                    causation_id=start_evt.event_id,
+                )
+
+            # 5. Invoke ManagerAgent Reasoning Step
+            decision, inference_resp = self.agent.reason(
+                state=state,
                 cycle_id=cycle_id,
-                decision=None,
-                escalated=True,
-                status_summary=f"Cost budget of ${self.config.max_cost_per_project:.2f} exceeded.",
+                context_package=context_pkg,
+                trigger_event=trigger_event,
+                feedback_message=feedback_message,
+                causation_id=start_evt.event_id,
             )
 
-        # 2. Gather State from Runtime
-        state = self.gather_state(project_id)
-
-        # 3. Assemble Bounded Context Package via Context Engine
-        context_pkg: Optional[ContextPackage] = None
-        try:
-            context_pkg = self.runtime.request_context(
-                task_id=f"mgr-state-{project_id}",
-                worker_id="worker.manager.orchestrator",
-                budget=self.config.context_budget,
-            )
-        except Exception as ctx_err:
-            logger.warning(f"Context retrieval for Manager cycle returned warning: {ctx_err}")
-
-        # 4. Emit MANAGER_CYCLE_STARTED & MANAGER_CONTEXT_BUILT
-        start_evt = self.runtime.log_event(
-            event_type=EventType.MANAGER_CYCLE_STARTED,
-            payload={"cycle_id": cycle_id, "cycle_number": current_cycle_num, "trigger": trigger_event.event_type.value if trigger_event else "MANUAL"},
-            project_id=project_id,
-            source=EventSource.MANAGER,
-            correlation_id=project_id,
-        )
-
-        if context_pkg:
-            self.runtime.log_event(
-                event_type=EventType.MANAGER_CONTEXT_BUILT,
-                payload={"cycle_id": cycle_id, "package_id": context_pkg.request_id, "items_count": len(context_pkg.items), "total_tokens": context_pkg.total_estimated_tokens},
+            # 6. Persist Decision Record and Emit MANAGER_DECISION_CREATED
+            self.runtime.store.save_manager_decision(decision)
+            dec_evt = self.runtime.log_event(
+                event_type=EventType.MANAGER_DECISION_CREATED,
+                payload={
+                    "decision_id": decision.decision_id,
+                    "cycle_id": cycle_id,
+                    "confidence": decision.confidence_level.value,
+                    "actions_count": len(decision.actions),
+                    "reasoning_summary": decision.reasoning_summary,
+                },
                 project_id=project_id,
                 source=EventSource.MANAGER,
                 correlation_id=project_id,
                 causation_id=start_evt.event_id,
             )
 
-        # 5. Invoke ManagerAgent Reasoning Step
-        decision, inference_resp = self.agent.reason(
-            state=state,
-            cycle_id=cycle_id,
-            context_package=context_pkg,
-            trigger_event=trigger_event,
-            feedback_message=feedback_message,
-            causation_id=start_evt.event_id,
-        )
+            # 7. Apply Plan Updates if proposed
+            if decision.plan_update:
+                self._apply_plan_update(project_id, decision.plan_update, dec_evt.event_id)
 
-        # 6. Persist Decision Record and Emit MANAGER_DECISION_CREATED
-        self.runtime.store.save_manager_decision(decision)
-        dec_evt = self.runtime.log_event(
-            event_type=EventType.MANAGER_DECISION_CREATED,
-            payload={
-                "decision_id": decision.decision_id,
-                "cycle_id": cycle_id,
-                "actions_count": len(decision.actions),
-                "reasoning_summary": decision.reasoning_summary,
-                "confidence_level": decision.confidence_level.value,
-            },
-            project_id=project_id,
-            source=EventSource.MANAGER,
-            correlation_id=project_id,
-            causation_id=start_evt.event_id,
-        )
+            # 8. Deterministic Validation and Execution of Actions
+            action_results: list[ActionResult] = []
+            progress_made = False
+            waiting = False
+            user_input_req = False
+            escalated = False
+            completed = False
 
-        # 7. Apply Plan Updates if proposed
-        if decision.plan_update:
-            self._apply_plan_update(project_id, decision.plan_update, dec_evt.event_id)
+            if len(decision.actions) > self.config.max_actions_per_cycle:
+                # Enforce max action cap
+                decision.actions = decision.actions[: self.config.max_actions_per_cycle]
 
-        # 8. Deterministic Validation and Execution of Actions
-        action_results: list[ActionResult] = []
-        progress_made = False
-        waiting = False
-        user_input_req = False
-        escalated = False
-        completed = False
+            for action in decision.actions:
+                result = self._validate_and_execute_action(project_id, action, dec_evt.event_id)
+                action_results.append(result)
 
-        if len(decision.actions) > self.config.max_actions_per_cycle:
-            # Enforce max action cap
-            decision.actions = decision.actions[: self.config.max_actions_per_cycle]
+                if result.accepted:
+                    if action.action_type in (
+                        ManagerActionType.CREATE_TASK,
+                        ManagerActionType.ASSIGN_TASK,
+                        ManagerActionType.UPDATE_TASK,
+                        ManagerActionType.REPRIORITIZE_TASK,
+                        ManagerActionType.UNBLOCK_TASK,
+                        ManagerActionType.REQUEST_RETRY,
+                        ManagerActionType.REQUEST_ROLLBACK,
+                        ManagerActionType.UPDATE_MEMORY,
+                    ):
+                        progress_made = True
+                    elif action.action_type == ManagerActionType.WAIT:
+                        waiting = True
+                    elif action.action_type == ManagerActionType.REQUEST_USER_INPUT:
+                        user_input_req = True
+                    elif action.action_type == ManagerActionType.ESCALATE:
+                        escalated = True
+                    elif action.action_type == ManagerActionType.COMPLETE_PROJECT:
+                        completed = True
 
-        for action in decision.actions:
-            result = self._validate_and_execute_action(project_id, action, dec_evt.event_id)
-            action_results.append(result)
+            # 9. Stagnation & Loop Detection
+            if progress_made:
+                self._consecutive_idle_cycles[project_id] = 0
+            else:
+                running_tasks = [t for t in self.runtime.tasks.list_tasks(project_id) if t.status == TaskStatus.RUNNING]
+                if not running_tasks and not user_input_req and not completed:
+                    self._consecutive_idle_cycles[project_id] = self._consecutive_idle_cycles.get(project_id, 0) + 1
+                    if self._consecutive_idle_cycles[project_id] >= self.config.max_cycles_without_progress:
+                        self.runtime.log_event(
+                            event_type=EventType.MANAGER_STAGNATION_DETECTED,
+                            payload={
+                                "consecutive_idle_cycles": self._consecutive_idle_cycles[project_id],
+                                "cycle_id": cycle_id,
+                            },
+                            project_id=project_id,
+                            source=EventSource.MANAGER,
+                            correlation_id=project_id,
+                            causation_id=dec_evt.event_id,
+                        )
+                        escalated = True
 
-            if result.accepted:
-                if action.action_type in (
-                    ManagerActionType.CREATE_TASK,
-                    ManagerActionType.ASSIGN_TASK,
-                    ManagerActionType.UPDATE_TASK,
-                    ManagerActionType.REQUEST_RETRY,
-                    ManagerActionType.UPDATE_MEMORY,
-                ):
-                    progress_made = True
-                elif action.action_type == ManagerActionType.WAIT:
-                    waiting = True
-                elif action.action_type == ManagerActionType.REQUEST_USER_INPUT:
-                    user_input_req = True
-                elif action.action_type == ManagerActionType.ESCALATE:
-                    escalated = True
-                elif action.action_type == ManagerActionType.COMPLETE_PROJECT:
-                    completed = True
+            # 10. Emit MANAGER_CYCLE_COMPLETED
+            self.runtime.log_event(
+                event_type=EventType.MANAGER_CYCLE_COMPLETED,
+                payload={
+                    "cycle_id": cycle_id,
+                    "actions_executed": len([r for r in action_results if r.accepted]),
+                    "actions_rejected": len([r for r in action_results if not r.accepted]),
+                    "status": "COMPLETED" if completed else ("ESCALATED" if escalated else "OK"),
+                },
+                project_id=project_id,
+                source=EventSource.MANAGER,
+                correlation_id=project_id,
+                causation_id=dec_evt.event_id,
+            )
 
-        # 9. Stagnation & Loop Detection
-        if progress_made:
-            self._consecutive_idle_cycles[project_id] = 0
-        else:
-            # If waiting for currently running tasks, don't penalize as stagnation
-            running_tasks = [t for t in self.runtime.tasks.list_tasks(project_id) if t.status == TaskStatus.RUNNING]
-            if not running_tasks and not user_input_req and not completed:
-                self._consecutive_idle_cycles[project_id] = self._consecutive_idle_cycles.get(project_id, 0) + 1
-                if self._consecutive_idle_cycles[project_id] >= self.config.max_cycles_without_progress:
-                    self.runtime.log_event(
-                        event_type=EventType.MANAGER_STAGNATION_DETECTED,
-                        payload={
-                            "consecutive_idle_cycles": self._consecutive_idle_cycles[project_id],
-                            "cycle_id": cycle_id,
-                        },
-                        project_id=project_id,
-                        source=EventSource.MANAGER,
-                        correlation_id=project_id,
-                        causation_id=dec_evt.event_id,
-                    )
-                    escalated = True
-
-        # 10. Emit MANAGER_CYCLE_COMPLETED
-        self.runtime.log_event(
-            event_type=EventType.MANAGER_CYCLE_COMPLETED,
-            payload={
-                "cycle_id": cycle_id,
-                "actions_executed": len([r for r in action_results if r.accepted]),
-                "actions_rejected": len([r for r in action_results if not r.accepted]),
-                "status": "COMPLETED" if completed else ("ESCALATED" if escalated else "OK"),
-            },
-            project_id=project_id,
-            source=EventSource.MANAGER,
-            correlation_id=project_id,
-            causation_id=dec_evt.event_id,
-        )
-
-        return CycleResult(
-            cycle_id=cycle_id,
-            decision=decision,
-            results=action_results,
-            progress_detected=progress_made,
-            completed=completed,
-            waiting=waiting,
-            user_input_required=user_input_req,
-            escalated=escalated,
-            status_summary=f"Cycle {current_cycle_num}: {len([r for r in action_results if r.accepted])} actions accepted.",
-        )
+            return CycleResult(
+                cycle_id=cycle_id,
+                decision=decision,
+                results=action_results,
+                progress_detected=progress_made,
+                completed=completed,
+                waiting=waiting,
+                user_input_required=user_input_req,
+                escalated=escalated,
+                status_summary=f"Cycle {current_cycle_num}: {len([r for r in action_results if r.accepted])} actions accepted.",
+            )
 
     def _apply_plan_update(self, project_id: str, update: dict[str, Any], causation_id: str) -> Plan:
         """Create or revise the project plan with proper version increment."""
@@ -389,7 +415,6 @@ class ManagerController:
             )
             self.runtime.store.save_plan(new_plan)
             self._active_plans[project_id] = new_plan
-
             self.runtime.log_event(
                 event_type=EventType.MANAGER_REPLAN,
                 payload={
@@ -397,6 +422,9 @@ class ManagerController:
                     "old_version": old_version,
                     "new_plan_id": new_plan.id,
                     "new_version": new_plan.version,
+                    "objective": new_plan.objective,
+                    "tasks_count": len(new_plan.tasks),
+                    "milestones": new_plan.milestones,
                     "reason": update.get("reason", "Plan revised by Manager"),
                 },
                 project_id=project_id,
@@ -414,6 +442,7 @@ class ManagerController:
     ) -> ActionResult:
         """Deterministic validation and execution of an individual proposed action."""
         atype = action.action_type
+        atype_str = atype.value if hasattr(atype, "value") else str(atype)
         params = action.parameters
 
         try:
@@ -423,7 +452,23 @@ class ManagerController:
                 if not title:
                     return self._reject_action(project_id, action, "Task title cannot be empty", causation_id)
 
-                priority = max(1, min(100, int(params.get("priority", 50))))
+                # Check duplicate active task with identical title in project
+                existing_tasks = self.runtime.tasks.list_tasks(project_id)
+                for et in existing_tasks:
+                    if et.status in (TaskStatus.PENDING, TaskStatus.READY, TaskStatus.ASSIGNED, TaskStatus.RUNNING):
+                        if et.title.strip().lower() == title.lower():
+                            return self._reject_action(
+                                project_id,
+                                action,
+                                f"Duplicate task rejected: Active task '{et.id}' already exists with title '{et.title}'.",
+                                causation_id,
+                            )
+
+                try:
+                    priority = max(1, min(100, int(params.get("priority", 50))))
+                except (ValueError, TypeError):
+                    priority = 50
+
                 risk_str = str(params.get("risk", "MEDIUM")).upper()
                 try:
                     risk = RiskLevel(risk_str)
@@ -443,13 +488,19 @@ class ManagerController:
                     created_task.success_criteria = params["success_criteria"]
                     self.runtime.store.save_task(created_task)
 
-                # Attach dependencies if specified
+                # Attach dependencies if specified with strict validation and rollback
                 deps = params.get("dependencies", [])
                 for dep_id in deps:
                     try:
                         self.runtime.tasks.add_dependency(created_task.id, dep_id)
                     except Exception as dep_err:
-                        logger.warning(f"Could not link dependency {dep_id} to {created_task.id}: {dep_err}")
+                        self.runtime.tasks.cancel_task(created_task.id, reason=f"Dependency validation failure: {dep_err}")
+                        return self._reject_action(
+                            project_id,
+                            action,
+                            f"Failed to link dependency '{dep_id}' to task '{created_task.id}': {dep_err}",
+                            causation_id,
+                        )
 
                 return self._accept_action(
                     project_id,
@@ -472,7 +523,10 @@ class ManagerController:
                 if "objective" in params:
                     task.objective = str(params["objective"])
                 if "priority" in params:
-                    task.priority = int(params["priority"])
+                    try:
+                        task.priority = max(1, min(100, int(params["priority"])))
+                    except (ValueError, TypeError):
+                        pass
 
                 self.runtime.store.save_task(task)
                 return self._accept_action(project_id, action, causation_id, target_id=task.id)
@@ -490,11 +544,14 @@ class ManagerController:
                 if task.status in (TaskStatus.COMPLETED, TaskStatus.RUNNING):
                     return self._reject_action(project_id, action, f"Task '{task_id}' is already {task.status.value}", causation_id)
 
-                # Check worker existence
+                # Check worker existence and availability
                 try:
                     worker = self.runtime.workers.get_worker(worker_id)
                 except Exception:
                     return self._reject_action(project_id, action, f"Worker '{worker_id}' does not exist", causation_id)
+
+                if worker.status != WorkerStatus.IDLE:
+                    return self._reject_action(project_id, action, f"Worker '{worker_id}' is busy ({worker.status.value})", causation_id)
 
                 # Check dependencies satisfied
                 prereqs = self.runtime.store.get_dependencies_for_task(task_id)
@@ -519,6 +576,101 @@ class ManagerController:
                     causation_id,
                     target_id=task_id,
                     output={"task_id": assigned_task.id, "worker_id": assigned_worker.id},
+                )
+
+            elif atype == ManagerActionType.REPRIORITIZE_TASK:
+                task_id = params.get("task_id")
+                if not task_id:
+                    return self._reject_action(project_id, action, "Missing 'task_id'", causation_id)
+                task = self.runtime.tasks.get_task(task_id)
+                try:
+                    task.priority = max(1, min(100, int(params.get("priority", 50))))
+                except (ValueError, TypeError):
+                    task.priority = 50
+                self.runtime.store.save_task(task)
+                return self._accept_action(project_id, action, causation_id, target_id=task.id, output={"priority": task.priority})
+
+            elif atype == ManagerActionType.BLOCK_TASK:
+                task_id = params.get("task_id")
+                if not task_id:
+                    return self._reject_action(project_id, action, "Missing 'task_id'", causation_id)
+                task = self.runtime.tasks.get_task(task_id)
+                TaskStateMachine.validate_and_transition(task, TaskStatus.BLOCKED, reason=params.get("reason", "Manager blocked"))
+                self.runtime.store.save_task(task)
+                return self._accept_action(project_id, action, causation_id, target_id=task.id, output={"status": "BLOCKED"})
+
+            elif atype == ManagerActionType.UNBLOCK_TASK:
+                task_id = params.get("task_id")
+                if not task_id:
+                    return self._reject_action(project_id, action, "Missing 'task_id'", causation_id)
+                task = self.runtime.tasks.get_task(task_id)
+                satisfied, _ = self.runtime.tasks.dependency_resolver.are_dependencies_satisfied(task.id)
+                target_st = TaskStatus.READY if satisfied else TaskStatus.PENDING
+                TaskStateMachine.validate_and_transition(task, target_st)
+                self.runtime.store.save_task(task)
+                return self._accept_action(project_id, action, causation_id, target_id=task.id, output={"status": target_st.value})
+
+            elif atype == ManagerActionType.REQUEST_VERIFICATION:
+                task_id = params.get("task_id")
+                if not task_id:
+                    return self._reject_action(project_id, action, "Missing 'task_id'", causation_id)
+                task = self.runtime.tasks.get_task(task_id)
+                project = self.runtime.projects.get_project(project_id)
+                verification = self.runtime.verification.verify_task(
+                    project=project,
+                    task=task,
+                    worker_id=task.assigned_worker,
+                    causation_id=causation_id,
+                )
+                return self._accept_action(
+                    project_id,
+                    action,
+                    causation_id,
+                    target_id=task.id,
+                    output={"verification_id": verification.id, "status": verification.status.value},
+                )
+
+            elif atype == ManagerActionType.REQUEST_ROLLBACK:
+                checkpoint_id = params.get("checkpoint_id")
+                if not checkpoint_id:
+                    return self._reject_action(project_id, action, "Missing 'checkpoint_id'", causation_id)
+                checkpoint = self.runtime.checkpoints.get_checkpoint(checkpoint_id)
+                if not checkpoint:
+                    return self._reject_action(project_id, action, f"Checkpoint '{checkpoint_id}' not found", causation_id)
+                project = self.runtime.projects.get_project(project_id)
+                rollback_res = self.runtime.rollback.rollback_checkpoint(checkpoint, project.root_path, self.runtime.store)
+                return self._accept_action(
+                    project_id,
+                    action,
+                    causation_id,
+                    target_id=checkpoint.id,
+                    output={"status": rollback_res.status.value if hasattr(rollback_res, "status") else "SUCCESS"},
+                )
+
+            elif atype_str == "REQUEST_APPROVAL":
+                action_desc = str(params.get("action", "High-risk operation"))
+                reason = str(params.get("reason", "Operation requires explicit human authorization"))
+                risk_str = str(params.get("risk_level", "HIGH")).upper()
+                try:
+                    risk_lvl = RiskLevel(risk_str)
+                except ValueError:
+                    risk_lvl = RiskLevel.HIGH
+                app_req = self.runtime.autonomy.request_approval(
+                    project_id=project_id,
+                    task_id=params.get("task_id", "mgr-plan"),
+                    worker_id=params.get("worker_id", "worker.manager.orchestrator"),
+                    action=action_desc,
+                    category=ActionCategory.MODIFY,
+                    risk_level=risk_lvl,
+                    reason=reason,
+                    requested_scope=params.get("scope", "workspace"),
+                )
+                return self._accept_action(
+                    project_id,
+                    action,
+                    causation_id,
+                    target_id=app_req.id,
+                    output={"approval_id": app_req.id, "status": app_req.status.value},
                 )
 
             elif atype == ManagerActionType.REQUEST_RETRY:

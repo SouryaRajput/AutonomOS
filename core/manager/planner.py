@@ -395,14 +395,13 @@ class ManagerPlanner:
     def _build_plan_summary(
         self, objective: str, contracts: List[WorkerTaskContract], subsystems: List[str]
     ) -> str:
-        """Builds a concise summary of the plan for the user/operator."""
-        sub_str = ", ".join([f"`{s}`" for s in subsystems]) if subsystems else "Root"
+        """Builds a clean streaming narrative summary of the plan."""
+        sub_str = ", ".join([f"`{s}`" for s in subsystems]) if subsystems else "Root Workspace"
         lines = [
-            f"**Objective**: {objective}",
-            f"**Subsystems Involved**: {sub_str}",
-            f"**Decomposed Plan**: {len(contracts)} tasks created.",
+            f"Understanding request: {objective}",
+            f"Inspecting project: Subsystems {sub_str} identified.",
+            f"Planning implementation: Decomposed into {len(contracts)} specialized worker contracts with dependency resolution.",
+            "Waiting for workers: Specialists inactive — execution paused.",
         ]
-        for c in contracts:
-            deps_str = f" (Depends on {', '.join(c.dependencies)})" if c.dependencies else ""
-            lines.append(f"- **{c.title}** [{c.worker_type}]{deps_str} -> `{c.status}`")
-        return "\n".join(lines)
+        return "\n\n".join(lines)
+

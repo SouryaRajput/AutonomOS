@@ -143,7 +143,113 @@ class ConversationService:
             produced_messages = [user_msg]
 
             if dispatch_manager:
-                # Trigger manager cycle with the user objective/feedback
+                from core.manager.router import IntentRouter
+                from core.manager.types import UserIntentType
+                from core.workspace.filesystem import ControlledWorkspaceFS
+                from core.workspace.project_map import ProjectMapEngine
+
+                classification = IntentRouter.classify(content)
+                project = self._runtime.projects.get_project(conv.project_id)
+
+                if classification.intent == UserIntentType.QUESTION and project and project.root_path:
+                    try:
+                        fs = ControlledWorkspaceFS(project.root_path)
+                        map_engine = ProjectMapEngine(fs)
+                        answer_text = IntentRouter.answer_question(content, map_engine, project.name)
+                    except Exception:
+                        answer_text = f"Analyzing {project.name}. No formal tasks created."
+
+                    mgr_msg_id = f"msg-{uuid.uuid4().hex[:8]}"
+                    mgr_msg = ConversationMessage(
+                        id=mgr_msg_id,
+                        conversation_id=conversation_id,
+                        message_type=MessageType.MANAGER_MESSAGE,
+                        content=answer_text,
+                        sender="Manager",
+                        timestamp=utc_now(),
+                        metadata={"intent": "QUESTION", "direct_answer": True},
+                    )
+                    if hasattr(self._runtime.store, "add_conversation_message"):
+                        self._runtime.store.add_conversation_message(
+                            message_id=mgr_msg.id,
+                            conversation_id=conversation_id,
+                            message_type=mgr_msg.message_type.value,
+                            content=mgr_msg.content,
+                            sender=mgr_msg.sender,
+                            timestamp=mgr_msg.timestamp,
+                            metadata=mgr_msg.metadata,
+                        )
+                    produced_messages.append(mgr_msg)
+                    return produced_messages
+
+                # Otherwise (EXECUTION_REQUEST, etc.):
+                active_plan = self._runtime.get_active_plan(conv.project_id)
+                if not active_plan and project and project.root_path:
+                    from core.manager.planner import ManagerPlanner
+                    from core.manager.model import Plan
+                    from core.manager.types import PlanStatus
+                    from core.events.types import EventSource, EventType
+
+                    fs = ControlledWorkspaceFS(project.root_path)
+                    map_engine = ProjectMapEngine(fs)
+                    planner = ManagerPlanner(self._runtime, map_engine)
+                    delegation_plan = planner.plan_and_delegate(
+                        project_id=conv.project_id,
+                        objective=content,
+                    )
+
+                    plan_obj = Plan(
+                        id=delegation_plan.plan_id,
+                        project_id=conv.project_id,
+                        objective=content,
+                        tasks=[t.to_dict() for t in delegation_plan.tasks],
+                        milestones=delegation_plan.subsystems_involved,
+                        status=PlanStatus.ACTIVE,
+                        version=1,
+                    )
+                    if hasattr(self._runtime.store, "save_plan"):
+                        self._runtime.store.save_plan(plan_obj)
+
+                    self._runtime.log_event(
+                        event_type=EventType.MANAGER_PLAN_CREATED,
+                        payload={
+                            "plan_id": delegation_plan.plan_id,
+                            "tasks_count": len(delegation_plan.tasks),
+                            "status": delegation_plan.status,
+                            "objective": content,
+                        },
+                        project_id=conv.project_id,
+                        source=EventSource.MANAGER,
+                    )
+
+                    mgr_msg_id = f"msg-{uuid.uuid4().hex[:8]}"
+                    mgr_msg = ConversationMessage(
+                        id=mgr_msg_id,
+                        conversation_id=conversation_id,
+                        message_type=MessageType.MANAGER_MESSAGE,
+                        content=f"Work plan prepared with {len(delegation_plan.tasks)} tasks. Execution is currently paused waiting for workers.",
+                        sender="Manager",
+                        timestamp=utc_now(),
+                        metadata={
+                            "plan_id": delegation_plan.plan_id,
+                            "tasks_count": len(delegation_plan.tasks),
+                            "status": delegation_plan.status,
+                        },
+                    )
+                    if hasattr(self._runtime.store, "add_conversation_message"):
+                        self._runtime.store.add_conversation_message(
+                            message_id=mgr_msg.id,
+                            conversation_id=conversation_id,
+                            message_type=mgr_msg.message_type.value,
+                            content=mgr_msg.content,
+                            sender=mgr_msg.sender,
+                            timestamp=mgr_msg.timestamp,
+                            metadata=mgr_msg.metadata,
+                        )
+                    produced_messages.append(mgr_msg)
+                    return produced_messages
+
+                # If plan already exists, step the Manager cycle
                 cycle_result = self._runtime.step_manager(
                     project_id=conv.project_id,
                     feedback=content,

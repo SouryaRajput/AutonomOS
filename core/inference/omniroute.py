@@ -7,6 +7,7 @@ from core.errors import AutonomOSError
 from core.inference.model import (
     InferenceRequest,
     ModelMetadata,
+    ModelRequirement,
     RoutingCandidate,
     RoutingDecision,
 )
@@ -228,3 +229,37 @@ class OmniRoute:
                 reasons.append(f"Preferred capability '{pref_cap.value}' bonus (+150)")
 
         return round(score, 2), reasons
+
+    @classmethod
+    def escalate_requirements_for_complexity(
+        cls,
+        base_requirements: ModelRequirement,
+        is_failure_or_replan: bool = False,
+        uncertainty_level: Optional[str] = None,
+        task_risk: Optional[str] = None,
+    ) -> ModelRequirement:
+        """
+        Dynamically escalates inference requirements and routing profiles when tasks fail verification,
+        require architectural replanning, or carry high risk/uncertainty.
+        """
+        escalated_caps = set(base_requirements.required_capabilities)
+        escalated_profile = base_requirements.routing_profile
+
+        if is_failure_or_replan or uncertainty_level in ("HIGH_RISK_UNCERTAINTY", "NEEDS_INFORMATION") or task_risk in ("HIGH", "CRITICAL"):
+            escalated_profile = RoutingProfile.QUALITY_FIRST
+            escalated_caps.add(ModelCapability.REASONING)
+            escalated_caps.add(ModelCapability.STRUCTURED_OUTPUT)
+
+        return ModelRequirement(
+            required_capabilities=escalated_caps,
+            preferred_capabilities=base_requirements.preferred_capabilities,
+            routing_profile=escalated_profile,
+            minimum_context=base_requirements.minimum_context,
+            maximum_cost=base_requirements.maximum_cost,
+            maximum_latency_ms=None if is_failure_or_replan else base_requirements.maximum_latency_ms,
+            preferred_providers=base_requirements.preferred_providers,
+            excluded_providers=base_requirements.excluded_providers,
+            preferred_models=base_requirements.preferred_models,
+            excluded_models=base_requirements.excluded_models,
+        )
+

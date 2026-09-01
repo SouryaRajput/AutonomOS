@@ -223,7 +223,7 @@ class TaskEngine:
         if task.assigned_worker:
             try:
                 worker = self.worker_registry.get_worker(task.assigned_worker)
-                if worker.active_task_id == task.id:
+                if worker.active_task_id == task.id or worker.status in (WorkerStatus.ASSIGNED, WorkerStatus.BUSY):
                     self.worker_registry.update_worker_status(
                         worker_id=task.assigned_worker,
                         target_status=WorkerStatus.IDLE,

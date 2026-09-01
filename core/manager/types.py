@@ -55,3 +55,13 @@ class ManagerExecutionMode(str, Enum):
     """Execution step mode for the Manager loop."""
     SINGLE_STEP = "SINGLE_STEP"
     CONTINUOUS = "CONTINUOUS"
+
+
+class UserIntentType(str, Enum):
+    """Classification of user inputs for intent-aware routing."""
+    QUESTION = "QUESTION"
+    EXECUTION_REQUEST = "EXECUTION_REQUEST"
+    STATUS_QUERY = "STATUS_QUERY"
+    CLARIFICATION_RESPONSE = "CLARIFICATION_RESPONSE"
+    CONVERSATIONAL = "CONVERSATIONAL"
+

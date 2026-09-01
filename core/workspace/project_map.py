@@ -84,6 +84,8 @@ class ProjectMapEngine:
                 "last_audited": now_iso,
             }
 
+        discovered_routes = dict(self._discover_routes(file_records))
+
         project_map: Dict[str, Any] = {
             "version": "1.0",
             "project_name": project_name,
@@ -100,6 +102,7 @@ class ProjectMapEngine:
             "entry_points": index.entry_points,
             "manifests": index.manifests,
             "subsystems": subsystems,
+            "routes": discovered_routes,
             "files": file_records,
         }
 
