@@ -83,6 +83,46 @@ class InvalidWorkerTransitionError(AutonomOSError):
         )
 
 
+class WorkerActivationFailedError(AutonomOSError):
+    def __init__(
+        self,
+        worker_id: str,
+        reason: str,
+        task_id: Optional[str] = None,
+        retryable: bool = False,
+        lifecycle_state: str = "FAILED",
+    ):
+        super().__init__(
+            f"Worker '{worker_id}' activation failed: {reason}",
+            code="WORKER_ACTIVATION_FAILED",
+            details={
+                "worker_id": worker_id,
+                "reason": reason,
+                "task_id": task_id,
+                "retryable": retryable,
+                "lifecycle_state": lifecycle_state,
+            },
+        )
+
+
+class ResearcherActivationFailed(WorkerActivationFailedError):
+    def __init__(
+        self,
+        worker_id: str = "worker.researcher",
+        reason: str = "Researcher worker activation failed",
+        task_id: Optional[str] = None,
+        retryable: bool = False,
+        lifecycle_state: str = "FAILED",
+    ):
+        super().__init__(
+            worker_id=worker_id,
+            reason=reason,
+            task_id=task_id,
+            retryable=retryable,
+            lifecycle_state=lifecycle_state,
+        )
+
+
 # Task Errors
 class TaskNotFoundError(AutonomOSError):
     def __init__(self, task_id: str):

@@ -401,7 +401,7 @@ class ManagerPlanner:
             f"Understanding request: {objective}",
             f"Inspecting project: Subsystems {sub_str} identified.",
             f"Planning implementation: Decomposed into {len(contracts)} specialized worker contracts with dependency resolution.",
-            "Waiting for workers: Specialists inactive — execution paused.",
+            "Workforce orchestration: Specialized workers configured and provisioned on-demand.",
         ]
         return "\n\n".join(lines)
 

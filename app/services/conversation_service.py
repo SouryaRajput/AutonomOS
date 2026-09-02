@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 from app.dto.conversation import Conversation, ConversationMessage, MessageType
 from app.dto.errors import AppError, AppException, ErrorCode, normalize_error
+from app.services.message_sanitizer import extract_user_facing_narrative, is_internal_tool_payload
 from core.models import utc_now
 
 if TYPE_CHECKING:
@@ -222,12 +223,37 @@ class ConversationService:
                         source=EventSource.MANAGER,
                     )
 
+                    # Automatically provision and activate required specialist workers
+                    for t_contract in delegation_plan.tasks:
+                        w_id = t_contract.worker_id or t_contract.worker_type
+                        if w_id:
+                            try:
+                                self._runtime.activate_worker(w_id, project_id=conv.project_id, task_id=t_contract.task_id)
+                            except Exception as act_err:
+                                logger.warning(f"Could not pre-activate worker '{w_id}': {act_err}")
+
+                    # Step manager cycle to formulate initial assignments
+                    try:
+                        cycle_result = self._runtime.step_manager(conv.project_id)
+                    except Exception as step_err:
+                        logger.warning(f"Initial Manager step cycle failed: {step_err}")
+                        cycle_result = None
+
+                    summary_text = (
+                        cycle_result.status_summary
+                        if cycle_result and cycle_result.status_summary and cycle_result.status_summary != "No cycles run."
+                        else f"Work plan formulated with {len(delegation_plan.tasks)} tasks. Required specialists activated."
+                    )
+                    clean_summary, internal_tools = extract_user_facing_narrative(summary_text)
+                    if not clean_summary:
+                        clean_summary = f"Work plan formulated with {len(delegation_plan.tasks)} tasks. Required specialists activated."
+
                     mgr_msg_id = f"msg-{uuid.uuid4().hex[:8]}"
                     mgr_msg = ConversationMessage(
                         id=mgr_msg_id,
                         conversation_id=conversation_id,
                         message_type=MessageType.MANAGER_MESSAGE,
-                        content=f"Work plan prepared with {len(delegation_plan.tasks)} tasks. Execution is currently paused waiting for workers.",
+                        content=clean_summary,
                         sender="Manager",
                         timestamp=utc_now(),
                         metadata={
@@ -260,12 +286,26 @@ class ConversationService:
                 if cycle_result.decision:
                     summary = cycle_result.decision.reasoning_summary or summary
 
+                clean_summary, internal_tools = extract_user_facing_narrative(summary)
+                if not clean_summary:
+                    clean_summary = "I've updated the project execution plan and active task status."
+
+                if internal_tools:
+                    from core.events.types import EventSource, EventType
+                    for tool_call in internal_tools:
+                        self._runtime.log_event(
+                            event_type=EventType.TOOL_REQUESTED,
+                            payload=tool_call,
+                            project_id=conv.project_id,
+                            source=EventSource.MANAGER,
+                        )
+
                 mgr_msg_id = f"msg-{uuid.uuid4().hex[:8]}"
                 mgr_msg = ConversationMessage(
                     id=mgr_msg_id,
                     conversation_id=conversation_id,
                     message_type=MessageType.MANAGER_MESSAGE,
-                    content=summary,
+                    content=clean_summary,
                     sender="Manager",
                     timestamp=utc_now(),
                     metadata={
@@ -354,12 +394,29 @@ class ConversationService:
     ) -> ConversationMessage:
         """Record an arbitrary system/worker/workflow update message."""
         try:
+            clean_content, internal_tools = extract_user_facing_narrative(content)
+            if not clean_content and message_type == MessageType.ERROR:
+                clean_content = "An internal operation encountered an error."
+            elif not clean_content:
+                clean_content = "Specialist execution update recorded."
+
+            if internal_tools:
+                from core.events.types import EventSource, EventType
+                conv = self.get_conversation(conversation_id)
+                for tool_call in internal_tools:
+                    self._runtime.log_event(
+                        event_type=EventType.TOOL_REQUESTED,
+                        payload=tool_call,
+                        project_id=conv.project_id if hasattr(conv, "project_id") else "",
+                        source=EventSource.WORKER,
+                    )
+
             msg_id = f"msg-{uuid.uuid4().hex[:8]}"
             msg = ConversationMessage(
                 id=msg_id,
                 conversation_id=conversation_id,
                 message_type=message_type,
-                content=content,
+                content=clean_content,
                 sender=sender,
                 timestamp=utc_now(),
                 metadata=metadata or {},

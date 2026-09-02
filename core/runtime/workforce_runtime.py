@@ -19,8 +19,10 @@ from core.enums import (
 )
 from core.errors import (
     ExecutionFailedError,
+    ResearcherActivationFailed,
     TaskAlreadyCompletedError,
     TaskNotFoundError,
+    WorkerActivationFailedError,
     WorkerNotEligibleError,
     WorkerNotFoundError,
 )
@@ -448,6 +450,95 @@ class WorkforceRuntime:
     def register_worker_instance_only(self, worker: Worker) -> None:
         self.workers.register_worker_instance_only(worker)
 
+    def activate_worker(
+        self,
+        worker_id_or_role: str,
+        project_id: Optional[str] = None,
+        task_id: Optional[str] = None,
+        causation_id: Optional[str] = None,
+    ) -> WorkerManifest:
+        """
+        Dynamically activate/provision a specialized worker through the authoritative lifecycle:
+        REQUESTED -> STARTING -> INITIALIZING -> REGISTERED -> READY/IDLE.
+        """
+        req_evt = self.log_event(
+            event_type=EventType.WORKER_ACTIVATION_REQUESTED,
+            payload={"worker_id_or_role": worker_id_or_role, "task_id": task_id, "project_id": project_id},
+            project_id=project_id,
+            task_id=task_id,
+            correlation_id=task_id or project_id,
+            causation_id=causation_id,
+        )
+
+        start_evt = self.log_event(
+            event_type=EventType.WORKER_ACTIVATION_STARTED,
+            payload={"worker_id_or_role": worker_id_or_role, "task_id": task_id},
+            project_id=project_id,
+            task_id=task_id,
+            correlation_id=task_id or project_id,
+            causation_id=req_evt.event_id,
+        )
+
+        try:
+            manifest, is_newly_registered = self.workers.provision_worker(worker_id_or_role)
+
+            if is_newly_registered:
+                self.log_event(
+                    event_type=EventType.WORKER_REGISTERED,
+                    payload={
+                        "name": manifest.name,
+                        "role": manifest.role,
+                        "capabilities": manifest.capabilities,
+                        "permissions": manifest.permissions,
+                    },
+                    worker_id=manifest.id,
+                    project_id=project_id,
+                    correlation_id=manifest.id,
+                    causation_id=start_evt.event_id,
+                )
+                self.log_event(
+                    event_type=EventType.WORKER_BECAME_IDLE,
+                    payload={"worker_id": manifest.id, "role": manifest.role},
+                    worker_id=manifest.id,
+                    project_id=project_id,
+                    correlation_id=manifest.id,
+                    causation_id=start_evt.event_id,
+                )
+
+            self.log_event(
+                event_type=EventType.WORKER_ACTIVATION_COMPLETED,
+                payload={"worker_id": manifest.id, "role": manifest.role, "status": manifest.status.value},
+                worker_id=manifest.id,
+                project_id=project_id,
+                correlation_id=manifest.id,
+                causation_id=start_evt.event_id,
+            )
+            return manifest
+
+        except Exception as err:
+            self.log_event(
+                event_type=EventType.WORKER_ACTIVATION_FAILED,
+                payload={"worker_id_or_role": worker_id_or_role, "reason": str(err), "task_id": task_id},
+                project_id=project_id,
+                task_id=task_id,
+                correlation_id=task_id or project_id,
+                causation_id=start_evt.event_id,
+            )
+            if "research" in worker_id_or_role.lower():
+                raise ResearcherActivationFailed(
+                    worker_id=worker_id_or_role,
+                    reason=str(err),
+                    task_id=task_id,
+                ) from err
+            elif isinstance(err, WorkerActivationFailedError):
+                raise
+            else:
+                raise WorkerActivationFailedError(
+                    worker_id=worker_id_or_role,
+                    reason=str(err),
+                    task_id=task_id,
+                ) from err
+
     def register_default_specialist_workers(self) -> None:
         """Register the production AI specialist workers: Researcher, Programmer, Tester."""
         from workers.programmer.worker import ProgrammerWorker
@@ -516,6 +607,11 @@ class WorkforceRuntime:
         )
 
     def assign_task(self, task_id: str, worker_id: str) -> tuple[Task, WorkerManifest]:
+        if not self.workers.has_worker(worker_id):
+            try:
+                self.activate_worker(worker_id, task_id=task_id)
+            except Exception:
+                pass
         task, worker_manifest = self.tasks.assign_task(task_id, worker_id)
         assign_evt = self.log_event(
             event_type=EventType.TASK_ASSIGNED,

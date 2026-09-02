@@ -544,14 +544,27 @@ class ManagerController:
                 if task.status in (TaskStatus.COMPLETED, TaskStatus.RUNNING):
                     return self._reject_action(project_id, action, f"Task '{task_id}' is already {task.status.value}", causation_id)
 
-                # Check worker existence and availability
+                # Check worker existence and availability, activating dynamically if possible
                 try:
                     worker = self.runtime.workers.get_worker(worker_id)
                 except Exception:
-                    return self._reject_action(project_id, action, f"Worker '{worker_id}' does not exist", causation_id)
+                    try:
+                        worker = self.runtime.activate_worker(
+                            worker_id,
+                            project_id=project_id,
+                            task_id=task_id,
+                            causation_id=causation_id,
+                        )
+                    except Exception as act_err:
+                        return self._reject_action(project_id, action, f"Worker '{worker_id}' does not exist and activation failed: {act_err}", causation_id)
 
-                if worker.status != WorkerStatus.IDLE:
+                if worker.status in (WorkerStatus.ASSIGNED, WorkerStatus.RUNNING, WorkerStatus.REPORTING):
                     return self._reject_action(project_id, action, f"Worker '{worker_id}' is busy ({worker.status.value})", causation_id)
+                elif worker.status != WorkerStatus.IDLE:
+                    try:
+                        worker = self.runtime.workers.update_worker_status(worker.id, WorkerStatus.IDLE)
+                    except Exception:
+                        return self._reject_action(project_id, action, f"Worker '{worker_id}' is unavailable ({worker.status.value})", causation_id)
 
                 # Check dependencies satisfied
                 prereqs = self.runtime.store.get_dependencies_for_task(task_id)
@@ -569,7 +582,7 @@ class ManagerController:
                         causation_id,
                     )
 
-                assigned_task, assigned_worker = self.runtime.assign_task(task_id, worker_id)
+                assigned_task, assigned_worker = self.runtime.assign_task(task_id, worker.id)
                 return self._accept_action(
                     project_id,
                     action,
@@ -874,6 +887,28 @@ class ManagerController:
             # 2. Check for assigned / ready tasks to run
             tasks = self.runtime.tasks.list_tasks(project_id)
             assigned_tasks = [t for t in tasks if t.status == TaskStatus.ASSIGNED and t.assigned_worker]
+
+            if not assigned_tasks:
+                # Check for unassigned ready/pending tasks that have worker metadata and satisfied dependencies
+                ready_tasks = [t for t in tasks if t.status in (TaskStatus.READY, TaskStatus.PENDING) and not t.assigned_worker]
+                assigned_any = False
+                for rt in ready_tasks:
+                    prereqs = self.runtime.store.get_dependencies_for_task(rt.id)
+                    if any(self.runtime.tasks.get_task(p.prerequisite_task_id).status != TaskStatus.COMPLETED for p in prereqs):
+                        continue
+                    meta = rt.metadata or {}
+                    w_target = meta.get("worker_id") or meta.get("worker_type")
+                    if w_target:
+                        try:
+                            worker_manifest = self.runtime.activate_worker(w_target, project_id=project_id, task_id=rt.id)
+                            self.runtime.assign_task(rt.id, worker_manifest.id)
+                            assigned_any = True
+                        except Exception as assign_err:
+                            logger.warning(f"Could not auto-assign task {rt.id} to {w_target}: {assign_err}")
+
+                if assigned_any:
+                    tasks = self.runtime.tasks.list_tasks(project_id)
+                    assigned_tasks = [t for t in tasks if t.status == TaskStatus.ASSIGNED and t.assigned_worker]
 
             if not assigned_tasks:
                 if cycle_res.waiting or not cycle_res.progress_detected:
