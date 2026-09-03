@@ -20,6 +20,7 @@ import '../services/http_api_client.dart';
 import '../services/mock_api_client.dart';
 import '../services/provider_storage.dart';
 import '../services/workspace_storage.dart';
+import '../services/conversation_storage.dart';
 
 enum AppTab {
   home,
@@ -177,11 +178,14 @@ class AppState extends ChangeNotifier {
           createdAt: DateTime.now().toIso8601String(),
           updatedAt: DateTime.now().toIso8601String(),
         );
+        await _loadProjectContext();
       } else {
         _projects = await projectRepo.getProjects();
         if (_projects.isNotEmpty) {
           _selectedProject = _projects.first;
           _activeWorkingPath = _selectedProject!.rootPath;
+          await _loadProjectContext();
+        } else {
           await _loadProjectContext();
         }
       }
@@ -218,8 +222,28 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void updateConversation(ChatConversation updated) {
+    final index = _conversations.indexWhere((c) => c.id == updated.id);
+    if (index != -1) {
+      _conversations[index] = updated;
+    } else {
+      _conversations.insert(0, updated);
+    }
+    if (_activeConversation?.id == updated.id) {
+      _activeConversation = updated;
+    }
+    ConversationStorage.saveConversation(updated);
+    notifyListeners();
+  }
+
   Future<void> selectConversation(ChatConversation conv) async {
-    _activeConversation = conv;
+    final existingIndex = _conversations.indexWhere((c) => c.id == conv.id);
+    if (existingIndex != -1) {
+      _activeConversation = _conversations[existingIndex];
+    } else {
+      _conversations.insert(0, conv);
+      _activeConversation = conv;
+    }
     notifyListeners();
   }
 
@@ -235,26 +259,27 @@ class AppState extends ChangeNotifier {
       }
     }
 
+    final now = DateTime.now().toIso8601String();
+    final newConv = ChatConversation(
+      id: 'conv-${DateTime.now().millisecondsSinceEpoch}',
+      projectId: _selectedProject?.id ?? 'proj-default',
+      title: title,
+      messages: [],
+      createdAt: now,
+      updatedAt: now,
+      isActive: true,
+    );
+
+    _conversations.insert(0, newConv);
+    _activeConversation = newConv;
+    ConversationStorage.saveConversation(newConv);
+    notifyListeners();
+
     try {
-      final conv = await conversationRepo.createConversation(_selectedProject!.id, title: title);
-      _conversations.insert(0, conv);
-      _activeConversation = conv;
-      notifyListeners();
-      return conv;
-    } catch (e) {
-      final fallbackConv = ChatConversation(
-        id: 'conv-${DateTime.now().millisecondsSinceEpoch}',
-        projectId: _selectedProject?.id ?? 'proj-default',
-        title: title,
-        messages: [],
-        createdAt: DateTime.now().toIso8601String(),
-        updatedAt: DateTime.now().toIso8601String(),
-      );
-      _conversations.insert(0, fallbackConv);
-      _activeConversation = fallbackConv;
-      notifyListeners();
-      return fallbackConv;
-    }
+      await conversationRepo.createConversation(_selectedProject!.id, title: title);
+    } catch (_) {}
+
+    return newConv;
   }
 
   Future<void> renameConversation(String conversationId, String newTitle) async {
@@ -276,6 +301,7 @@ class AppState extends ChangeNotifier {
       if (_activeConversation?.id == conversationId) {
         _activeConversation = updated;
       }
+      ConversationStorage.renameConversation(conversationId, cleanTitle);
       notifyListeners();
       try {
         await conversationRepo.renameConversation(conversationId, cleanTitle);
@@ -285,8 +311,25 @@ class AppState extends ChangeNotifier {
 
   Future<void> deleteConversation(String conversationId) async {
     _conversations.removeWhere((c) => c.id == conversationId);
+    ConversationStorage.deleteConversation(conversationId);
+
     if (_activeConversation?.id == conversationId) {
-      _activeConversation = _conversations.isNotEmpty ? _conversations.first : null;
+      if (_conversations.isNotEmpty) {
+        _activeConversation = _conversations.first;
+      } else {
+        final freshConv = ChatConversation(
+          id: 'conv-${DateTime.now().millisecondsSinceEpoch}',
+          projectId: _selectedProject?.id ?? 'proj-default',
+          title: 'Workforce Chat',
+          messages: [],
+          createdAt: DateTime.now().toIso8601String(),
+          updatedAt: DateTime.now().toIso8601String(),
+          isActive: true,
+        );
+        _conversations.add(freshConv);
+        _activeConversation = freshConv;
+        ConversationStorage.saveConversation(freshConv);
+      }
     }
     notifyListeners();
     try {
@@ -465,15 +508,76 @@ class AppState extends ChangeNotifier {
   Future<void> _loadProjectContext() async {
     try {
       _workers = await workerRepo.getWorkers();
-      if (_selectedProject != null) {
-        _managerStatus = await workflowRepo.getManagerStatus(_selectedProject!.id);
-        _artifacts = await artifactRepo.listArtifacts(_selectedProject!.id);
-        _tasks = await workflowRepo.getTasks(_selectedProject!.id);
-        _conversations = await conversationRepo.getConversations(_selectedProject!.id);
-        if (_conversations.isNotEmpty && _activeConversation == null) {
-          _activeConversation = _conversations.first;
-        }
-      }
     } catch (_) {}
+
+    final pid = _selectedProject?.id ?? '';
+    // 1. Immediately load local persisted conversations
+    final localConvs = ConversationStorage.loadConversations(pid);
+    if (localConvs.isNotEmpty) {
+      _conversations = localConvs;
+      if (_activeConversation == null || !_conversations.any((c) => c.id == _activeConversation?.id)) {
+        _activeConversation = _conversations.first;
+      }
+      notifyListeners();
+    }
+
+    if (_selectedProject != null) {
+      try {
+        _managerStatus = await workflowRepo.getManagerStatus(_selectedProject!.id);
+      } catch (_) {}
+      try {
+        _artifacts = await artifactRepo.listArtifacts(_selectedProject!.id);
+      } catch (_) {}
+      try {
+        _tasks = await workflowRepo.getTasks(_selectedProject!.id);
+      } catch (_) {}
+
+      try {
+        final remoteConvs = await conversationRepo.getConversations(_selectedProject!.id);
+        if (remoteConvs.isNotEmpty) {
+          final mergedMap = <String, ChatConversation>{};
+          for (final c in _conversations) {
+            mergedMap[c.id] = c;
+          }
+          for (final rc in remoteConvs) {
+            final local = mergedMap[rc.id];
+            if (local == null) {
+              mergedMap[rc.id] = rc;
+            } else {
+              final msgs = local.messages.length >= rc.messages.length ? local.messages : rc.messages;
+              mergedMap[rc.id] = ChatConversation(
+                id: rc.id,
+                projectId: rc.projectId,
+                title: rc.title.isNotEmpty ? rc.title : local.title,
+                messages: msgs,
+                createdAt: rc.createdAt.isNotEmpty ? rc.createdAt : local.createdAt,
+                updatedAt: rc.updatedAt.isNotEmpty ? rc.updatedAt : local.updatedAt,
+                isActive: rc.isActive,
+              );
+            }
+          }
+          _conversations = mergedMap.values.toList();
+          ConversationStorage.saveAllConversations(_conversations);
+        }
+      } catch (_) {}
+    }
+
+    if (_conversations.isEmpty) {
+      final initialConv = ChatConversation(
+        id: 'conv-${DateTime.now().millisecondsSinceEpoch}',
+        projectId: _selectedProject?.id ?? 'proj-default',
+        title: 'Workforce Chat',
+        messages: [],
+        createdAt: DateTime.now().toIso8601String(),
+        updatedAt: DateTime.now().toIso8601String(),
+        isActive: true,
+      );
+      _conversations = [initialConv];
+      _activeConversation = initialConv;
+      ConversationStorage.saveConversation(initialConv);
+    } else if (_activeConversation == null || !_conversations.any((c) => c.id == _activeConversation?.id)) {
+      _activeConversation = _conversations.first;
+    }
+    notifyListeners();
   }
 }

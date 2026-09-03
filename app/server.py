@@ -141,7 +141,8 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
 
             if path == "/api/conversations":
                 pid = q("project_id")
-                convs = self.app.conversations.list_conversations(pid)
+                include_msgs = q("include_messages", "true").lower() in ("true", "1", "yes")
+                convs = self.app.conversations.list_conversations(pid, include_messages=include_msgs)
                 return self._send_json(200, [c.to_dict() for c in convs])
 
             if path.startswith("/api/conversations/"):
@@ -304,7 +305,24 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
                 cancelled = self.app.tasks.cancel_task(tid, reason=reason)
                 return self._send_json(200, cancelled)
 
-            # 3. Conversation Messages
+            # 3. Conversation Operations & Messages
+            if path == "/api/conversations":
+                pid = body.get("project_id", "")
+                title = body.get("title", "New Conversation")
+                conv = self.app.conversations.create_conversation(project_id=pid, title=title)
+                return self._send_json(201, conv.to_dict())
+
+            if path.startswith("/api/conversations/") and path.endswith("/rename"):
+                cid = path.split("/")[3]
+                title = body.get("title", "Conversation")
+                conv = self.app.conversations.rename_conversation(cid, title)
+                return self._send_json(200, conv.to_dict())
+
+            if path.startswith("/api/conversations/") and path.endswith("/delete"):
+                cid = path.split("/")[3]
+                deleted = self.app.conversations.delete_conversation(cid)
+                return self._send_json(200, {"deleted": deleted, "conversation_id": cid})
+
             if path.startswith("/api/conversations/") and path.endswith("/messages"):
                 cid = path.split("/")[3]
                 content = body.get("content", "")
@@ -392,6 +410,24 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
             return self._send_error(400, e.error.code.value if hasattr(e.error.code, "value") else str(e.error.code), e.error.message, e.error.user_message)
         except Exception as e:
             logger.exception("POST Error handling %s", path)
+            return self._send_error(500, "INTERNAL_ERROR", str(e))
+
+    def do_DELETE(self) -> None:
+        parsed_url = urllib.parse.urlparse(self.path)
+        path = parsed_url.path
+
+        try:
+            if path.startswith("/api/conversations/"):
+                cid = path.split("/")[3]
+                deleted = self.app.conversations.delete_conversation(cid)
+                return self._send_json(200, {"deleted": deleted, "conversation_id": cid})
+
+            return self._send_error(404, "NOT_FOUND", f"Route DELETE {path} not found.")
+
+        except AppException as e:
+            return self._send_error(400, e.error.code.value if hasattr(e.error.code, "value") else str(e.error.code), e.error.message, e.error.user_message)
+        except Exception as e:
+            logger.exception("DELETE Error handling %s", path)
             return self._send_error(500, "INTERNAL_ERROR", str(e))
 
     def _handle_sse_stream(self, query: dict[str, list[str]]) -> None:

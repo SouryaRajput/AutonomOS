@@ -167,6 +167,13 @@ class CrawlerSpawner:
         name: Optional[str] = None,
     ) -> BaseCrawler:
         """Instantiate a crawler instance configured with multiple capabilities."""
+        if CrawlerCapability.WEB_SEARCH in capabilities:
+            from core.research.crawler.web_search import WebSearchCrawler
+            return WebSearchCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+            )
         from workers.crawler.worker import CrawlerWorker
         return CrawlerWorker(
             crawler_id=crawler_id,

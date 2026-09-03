@@ -58,3 +58,81 @@ class ProvenanceError(ResearchError):
     def __init__(self, item_id: str, expected: str, actual: str):
         msg = f"Provenance mismatch for item '{item_id}': expected '{expected}', found '{actual}'"
         super().__init__(msg, {"item_id": item_id, "expected": expected, "actual": actual})
+
+
+# Search-specific Errors
+class SearchError(ResearchError):
+    """Base exception for search-related errors."""
+    pass
+
+
+class SearchParameterValidationError(SearchError):
+    """Raised when search parameters fail schema, boundary, or sanity validation."""
+    def __init__(self, parameter: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid search parameter '{parameter}': {reason}"
+        d = {"parameter": parameter, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.parameter = parameter
+        self.reason = reason
+
+
+class SearchProviderError(SearchError):
+    """Raised when an external or internal search provider encounters an error."""
+    def __init__(self, provider_id: str, message: str, status_code: Optional[int] = None, details: Optional[dict] = None):
+        msg = f"Search provider '{provider_id}' failed: {message}"
+        d = {"provider_id": provider_id, "status_code": status_code}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.provider_id = provider_id
+        self.status_code = status_code
+
+
+class SearchRateLimitError(SearchProviderError):
+    """Raised when a search provider's rate limit or quota is exceeded."""
+    def __init__(self, provider_id: str, retry_after_seconds: Optional[float] = None, details: Optional[dict] = None):
+        msg = "Rate limit or quota exceeded"
+        if retry_after_seconds:
+            msg += f" (retry after {retry_after_seconds}s)"
+        d = {"retry_after_seconds": retry_after_seconds}
+        if details:
+            d.update(details)
+        super().__init__(provider_id, msg, status_code=429, details=d)
+        self.retry_after_seconds = retry_after_seconds
+
+
+class SearchAuthenticationError(SearchProviderError):
+    """Raised when search provider credentials/API keys are invalid or missing."""
+    def __init__(self, provider_id: str, message: str = "Invalid or missing API key", details: Optional[dict] = None):
+        super().__init__(provider_id, message, status_code=401, details=details)
+
+
+class SearchTimeoutError(SearchProviderError):
+    """Raised when a search query times out at provider or network layer."""
+    def __init__(self, provider_id: str, timeout_seconds: float, details: Optional[dict] = None):
+        msg = f"Search query timed out after {timeout_seconds}s"
+        d = {"timeout_seconds": timeout_seconds}
+        if details:
+            d.update(details)
+        super().__init__(provider_id, msg, status_code=408, details=d)
+        self.timeout_seconds = timeout_seconds
+
+
+class SearchSecurityError(SearchError):
+    """Raised when a URL, IP address, or host violates the network security boundary (SSRF, private network, metadata)."""
+    def __init__(self, target: str, reason: str, details: Optional[dict] = None):
+        msg = f"Search security violation for target '{target}': {reason}"
+        d = {"target": target, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.target = target
+        self.reason = reason
+
+
+class SearchConfigurationError(SearchError):
+    """Raised when search provider configuration is invalid or missing required attributes."""
+    def __init__(self, message: str, details: Optional[dict] = None):
+        super().__init__(message, details)

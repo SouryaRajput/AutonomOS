@@ -5,6 +5,7 @@ from core.research.crawler.capability import CrawlerCapabilitySpec, matches_capa
 from core.research.crawler.lifecycle import CrawlerStateMachine
 from core.research.crawler.mock_crawler import MockCrawler
 from core.research.crawler.registry import CrawlerRegistry
+from core.research.crawler.web_search import WebSearchCrawler
 
 __all__ = [
     "BaseCrawler",
@@ -13,4 +14,5 @@ __all__ = [
     "CrawlerStateMachine",
     "CrawlerRegistry",
     "MockCrawler",
+    "WebSearchCrawler",
 ]

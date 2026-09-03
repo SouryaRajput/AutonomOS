@@ -35,7 +35,7 @@ class _ClaudeShellState extends State<ClaudeShell> {
         appState: widget.appState,
         initialConversation: activeConv,
       );
-    } else if (_lastConversationId != cid && activeConv != null) {
+    } else if ((_lastConversationId != cid || _chatController!.conversation?.id != cid) && activeConv != null) {
       _lastConversationId = cid;
       _chatController!.setConversation(activeConv);
     }

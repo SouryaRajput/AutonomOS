@@ -51,7 +51,14 @@ class ChatController extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
     try {
-      _conversation = await repository.getActiveConversation(projectId);
+      if (appState?.activeConversation != null && appState!.activeConversation!.projectId == projectId) {
+        _conversation = appState!.activeConversation;
+      } else {
+        _conversation = await repository.getActiveConversation(projectId);
+        if (_conversation != null) {
+          appState?.updateConversation(_conversation!);
+        }
+      }
       _errorMessage = null;
     } catch (e) {
       _conversation = ChatConversation(
@@ -62,6 +69,9 @@ class ChatController extends ChangeNotifier {
         createdAt: DateTime.now().toIso8601String(),
         updatedAt: DateTime.now().toIso8601String(),
       );
+      if (_conversation != null) {
+        appState?.updateConversation(_conversation!);
+      }
       _errorMessage = null;
     } finally {
       _isLoading = false;
@@ -90,6 +100,7 @@ class ChatController extends ChangeNotifier {
         updatedAt: DateTime.now().toIso8601String(),
         isActive: _conversation!.isActive,
       );
+      appState?.updateConversation(_conversation!);
       _currentActivityTitle = '';
       _currentActivitySubtitle = '';
       notifyListeners();
@@ -120,7 +131,7 @@ class ChatController extends ChangeNotifier {
       timestamp: DateTime.now().toIso8601String(),
     );
 
-    // 1. Optimistically append user message in compact bubble
+    // 1. Optimistically append user message and synchronize state
     final currentMsgs = List<ChatMessage>.from(_conversation!.messages)..add(userMsg);
     _conversation = ChatConversation(
       id: _conversation!.id,
@@ -131,6 +142,7 @@ class ChatController extends ChangeNotifier {
       updatedAt: DateTime.now().toIso8601String(),
       isActive: _conversation!.isActive,
     );
+    appState?.updateConversation(_conversation!);
 
     _isSending = true;
     _currentActivityTitle = 'Exploring workspace…';
@@ -138,7 +150,7 @@ class ChatController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    // 2. Prepare clean message history for real LLM inference
+    // 2. Prepare clean message history strictly from this conversation's messages
     final history = <Map<String, String>>[];
     for (final m in _conversation!.messages) {
       if (m.content.startsWith('⚠️')) continue; // Ignore error/warning alerts
@@ -174,6 +186,7 @@ class ChatController extends ChangeNotifier {
         updatedAt: now,
         isActive: _conversation!.isActive,
       );
+      appState?.updateConversation(_conversation!);
       _isSending = false;
       _currentActivityTitle = '';
       _currentActivitySubtitle = '';
@@ -311,6 +324,7 @@ class ChatController extends ChangeNotifier {
       updatedAt: now,
       isActive: _conversation!.isActive,
     );
+    appState?.updateConversation(_conversation!);
 
     // Asynchronously notify backend server if active
     try {

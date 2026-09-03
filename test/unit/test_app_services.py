@@ -94,6 +94,22 @@ class TestAppServices(unittest.TestCase):
         self.assertEqual(reloaded.messages[0].content, "Create a user registration endpoint")
         self.assertEqual(reloaded.messages[0].sender, "user")
 
+        # Test renaming conversation
+        renamed = self.app.conversations.rename_conversation(conv.id, "User Registration Architecture")
+        self.assertEqual(renamed.title, "User Registration Architecture")
+        reloaded_renamed = self.app.conversations.get_conversation(conv.id)
+        self.assertEqual(reloaded_renamed.title, "User Registration Architecture")
+
+        # Test listing conversations includes created conversation
+        all_convs = self.app.conversations.list_conversations(proj["id"])
+        self.assertTrue(any(c.id == conv.id for c in all_convs))
+
+        # Test deleting conversation
+        del_res = self.app.conversations.delete_conversation(conv.id)
+        self.assertTrue(del_res)
+        all_convs_after = self.app.conversations.list_conversations(proj["id"])
+        self.assertFalse(any(c.id == conv.id for c in all_convs_after))
+
     def test_autonomy_policy_and_emergency_stop(self):
         proj = self.app.projects.create_project(
             name="Policy Proj",

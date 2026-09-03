@@ -85,24 +85,66 @@ class ConversationService:
         except Exception as e:
             raise AppException(normalize_error(e)) from e
 
-    def list_conversations(self, project_id: str) -> list[Conversation]:
+    def list_conversations(self, project_id: str, include_messages: bool = False) -> list[Conversation]:
         """List all conversations for a project."""
         try:
             if hasattr(self._runtime.store, "list_conversations_for_project"):
                 rows = self._runtime.store.list_conversations_for_project(project_id)
                 result = []
                 for r in rows:
+                    msgs = []
+                    if include_messages and hasattr(self._runtime.store, "get_conversation_messages"):
+                        raw_msgs = self._runtime.store.get_conversation_messages(r["id"])
+                        msgs = [ConversationMessage.from_dict(m) for m in raw_msgs]
                     result.append(Conversation(
                         id=r["id"],
                         project_id=r["project_id"],
                         title=r["title"],
-                        messages=[],
+                        messages=msgs,
                         created_at=r["created_at"],
                         updated_at=r["updated_at"],
                         is_active=r["is_active"],
                     ))
                 return result
             return []
+        except Exception as e:
+            raise AppException(normalize_error(e)) from e
+
+    def rename_conversation(self, conversation_id: str, new_title: str) -> Conversation:
+        """Rename an existing conversation session."""
+        try:
+            conv = self.get_conversation(conversation_id)
+            clean_title = new_title.strip() if new_title and new_title.strip() else conv.title
+            now = utc_now()
+            if hasattr(self._runtime.store, "save_conversation"):
+                self._runtime.store.save_conversation(
+                    conversation_id=conv.id,
+                    project_id=conv.project_id,
+                    title=clean_title,
+                    created_at=conv.created_at,
+                    updated_at=now,
+                    is_active=conv.is_active,
+                )
+            return Conversation(
+                id=conv.id,
+                project_id=conv.project_id,
+                title=clean_title,
+                messages=conv.messages,
+                created_at=conv.created_at,
+                updated_at=now,
+                is_active=conv.is_active,
+            )
+        except AppException:
+            raise
+        except Exception as e:
+            raise AppException(normalize_error(e)) from e
+
+    def delete_conversation(self, conversation_id: str) -> bool:
+        """Delete a conversation session and all its associated messages."""
+        try:
+            if hasattr(self._runtime.store, "delete_conversation"):
+                return bool(self._runtime.store.delete_conversation(conversation_id))
+            return False
         except Exception as e:
             raise AppException(normalize_error(e)) from e
 
