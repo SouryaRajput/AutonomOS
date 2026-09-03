@@ -204,9 +204,13 @@ class InferenceService {
     buffer.writeln('1. Formulate a crisp, multi-phase execution plan for this goal.');
     buffer.writeln('2. Formulate a specific, structured Task Delegation Brief for your Specialist Researcher worker.');
     buffer.writeln('3. Specify exactly which 3-5 technical questions and codebase areas the Researcher must investigate.');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- All project files and context have already been inspected and supplied above.');
+    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
     final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager.'},
+      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Respond strictly in pure Markdown prose. Never emit <tool_call> or pseudo-function JSON.'},
       {'role': 'user', 'content': buffer.toString()},
     ];
 
@@ -250,10 +254,14 @@ class InferenceService {
     buffer.writeln('1. Perform a deep, thorough technical analysis tailored specifically to this codebase and stack.');
     buffer.writeln('2. Address every question raised by the Manager.');
     buffer.writeln('3. Provide concrete code patterns, library suggestions, UX/UI improvements, performance optimizations, and exact implementation recommendations.');
-    buffer.writeln('4. Return a comprehensive Research Findings Dossier.');
+    buffer.writeln('4. Return a comprehensive Research Findings Dossier in pure Markdown.');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- All project files and context have already been inspected and supplied above.');
+    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
     final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Specialist Researcher. Provide rigorous, deep, concrete technical analysis.'},
+      {'role': 'system', 'content': 'You are the AutonomOS Specialist Researcher. Provide rigorous, deep, concrete technical analysis in pure Markdown. Never emit <tool_call> or pseudo-function JSON.'},
       {'role': 'user', 'content': buffer.toString()},
     ];
 
@@ -289,9 +297,12 @@ class InferenceService {
     buffer.writeln('2. **Key Findings & Recommendations**: The core concrete recommendations, code snippets, architectural improvements, and UI/UX patterns tailored to the project.');
     buffer.writeln('3. **Proposed Implementation Plan**: A clear step-by-step roadmap for implementing these improvements.');
     buffer.writeln('4. **Call to Action**: Conclude by asking the user: "Would you like me to proceed with creating an implementation plan for the Programmer and QA Tester to begin implementing these changes?"');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
     final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Communicate directly, professionally, and clearly with the user.'},
+      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Communicate directly, professionally, and clearly with the user in pure Markdown. Never emit <tool_call> or pseudo-function JSON.'},
       {'role': 'user', 'content': buffer.toString()},
     ];
 

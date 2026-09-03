@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../../core/tokens/tokens.dart';
 import '../../state/app_state.dart';
+import '../../services/token_storage.dart';
+import '../chat/token_usage_dialog.dart';
 
 /// Centered Multi-Tab Settings Modal with Custom Providers, Token Usage, Permissions, and Safety.
 class ClaudeSettingsDialog extends StatefulWidget {
@@ -543,6 +545,8 @@ class _ClaudeSettingsDialogState extends State<ClaudeSettingsDialog> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
+    final todayKey = TokenStorage.todayKey();
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -554,13 +558,34 @@ class _ClaudeSettingsDialogState extends State<ClaudeSettingsDialog> {
         ),
         const SizedBox(height: AppTokens.space20),
 
+        Text(
+          "TODAY'S USAGE ($todayKey)",
+          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppTokens.darkTextMuted),
+        ),
+        const SizedBox(height: AppTokens.space8),
         Row(
           children: [
-            _buildTokenCard('Total Tokens', widget.appState.totalTokens.toString(), Icons.token_outlined, isDark),
+            _buildTokenCard('Today Total', TokenUsageDialog.formatNumber(widget.appState.tokensToday), Icons.data_usage_rounded, isDark),
             const SizedBox(width: AppTokens.space12),
-            _buildTokenCard('Prompt Tokens', widget.appState.promptTokens.toString(), Icons.arrow_downward, isDark),
+            _buildTokenCard('Today Input', TokenUsageDialog.formatNumber(widget.appState.promptTokensToday), Icons.arrow_downward, isDark),
             const SizedBox(width: AppTokens.space12),
-            _buildTokenCard('Completion Tokens', widget.appState.completionTokens.toString(), Icons.arrow_upward, isDark),
+            _buildTokenCard('Today Output', TokenUsageDialog.formatNumber(widget.appState.completionTokensToday), Icons.arrow_upward, isDark),
+          ],
+        ),
+        const SizedBox(height: AppTokens.space20),
+
+        const Text(
+          'LIFETIME USAGE',
+          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, letterSpacing: 0.5, color: AppTokens.darkTextMuted),
+        ),
+        const SizedBox(height: AppTokens.space8),
+        Row(
+          children: [
+            _buildTokenCard('Lifetime Total', TokenUsageDialog.formatNumber(widget.appState.lifetimeTokens), Icons.token_outlined, isDark),
+            const SizedBox(width: AppTokens.space12),
+            _buildTokenCard('Lifetime Input', TokenUsageDialog.formatNumber(widget.appState.lifetimePromptTokens), Icons.arrow_downward, isDark),
+            const SizedBox(width: AppTokens.space12),
+            _buildTokenCard('Lifetime Output', TokenUsageDialog.formatNumber(widget.appState.lifetimeCompletionTokens), Icons.arrow_upward, isDark),
           ],
         ),
         const SizedBox(height: AppTokens.space24),

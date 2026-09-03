@@ -356,6 +356,8 @@ class ChatController extends ChangeNotifier {
 
       final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
 
+      final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
+
       // -------------------------------------------------------------
       // PHASE 2: RESEARCHER SPECIALIST EXECUTION
       // -------------------------------------------------------------
@@ -402,7 +404,7 @@ class ChatController extends ChangeNotifier {
         baseUrl: activeProv['baseUrl'] as String? ?? '',
         apiKey: activeProv['apiKey'] as String? ?? '',
         model: activeProv['model'] as String? ?? '',
-        managerBrief: managerBrief,
+        managerBrief: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
         activeWorkingPath: activePath,
         projectName: projectName,
         scannedFiles: scannedFiles,
@@ -410,6 +412,7 @@ class ChatController extends ChangeNotifier {
       );
 
       final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
+      final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
 
       // -------------------------------------------------------------
       // PHASE 3: MANAGER SYNTHESIS & PROPOSED IMPLEMENTATION PLAN
@@ -459,8 +462,8 @@ class ChatController extends ChangeNotifier {
         apiKey: activeProv['apiKey'] as String? ?? '',
         model: activeProv['model'] as String? ?? '',
         userPrompt: cleanPrompt,
-        managerPlan: managerBrief,
-        researcherFindings: researcherDossier,
+        managerPlan: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+        researcherFindings: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
         projectName: projectName,
       );
 
@@ -479,7 +482,14 @@ class ChatController extends ChangeNotifier {
       }
 
       final extracted = MessageSanitizer.extractUserFacingNarrative(rawAiResponse);
-      finalContent = extracted.userFacingNarrative;
+      var text = extracted.userFacingNarrative;
+      if (text.isEmpty && cleanResearcherDossier.isNotEmpty) {
+        text = cleanResearcherDossier;
+      }
+      if (text.isEmpty) {
+        text = 'I inspected your project workspace and analyzed the architecture and component structure. Would you like me to formulate a concrete implementation plan for the Programmer and QA Tester?';
+      }
+      finalContent = text;
     } catch (err) {
       finalContent = '⚠️ Inference Error from "${activeProv['name'] ?? activeProv['baseUrl']}":\n\n'
           '$err\n\n'

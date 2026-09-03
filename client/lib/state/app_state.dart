@@ -21,6 +21,7 @@ import '../services/mock_api_client.dart';
 import '../services/provider_storage.dart';
 import '../services/workspace_storage.dart';
 import '../services/conversation_storage.dart';
+import '../services/token_storage.dart';
 
 enum AppTab {
   home,
@@ -43,8 +44,49 @@ class AppState extends ChangeNotifier {
   late final ApprovalRepository approvalRepo;
   late final ActivityRepository activityRepo;
   late final ArtifactRepository artifactRepo;
-  late final DeepLinkNavigator deepLinkNavigator;
+  late final DeepLinkNavigator navigator;
 
+  // Global UI State
+  AppTab _activeTab = AppTab.chat;
+  AppTab get activeTab => _activeTab;
+
+  bool _isTerminalOpen = false;
+  bool get isTerminalOpen => _isTerminalOpen;
+
+  bool _isLoading = false;
+  bool get isLoading => _isLoading;
+
+  bool _isAutonomousLoopActive = false;
+  bool get isAutonomousLoopActive => _isAutonomousLoopActive;
+
+  bool _isEmergencyStopped = false;
+  bool get isEmergencyStopped => _isEmergencyStopped;
+
+  String _emergencyStopReason = '';
+  String get emergencyStopReason => _emergencyStopReason;
+
+  String? _errorMessage;
+  String? get errorMessage => _errorMessage;
+
+  // --- Token Telemetry Metrics (Persisted to disk) ---
+  TokenUsageData _tokenUsage = TokenStorage.loadUsage();
+  TokenUsageData get tokenUsage => _tokenUsage;
+
+  int get tokensToday => _tokenUsage.usageToday.total;
+  int get promptTokensToday => _tokenUsage.usageToday.prompt;
+  int get completionTokensToday => _tokenUsage.usageToday.completion;
+
+  int get lifetimeTokens => _tokenUsage.lifetimeTotal;
+  int get lifetimePromptTokens => _tokenUsage.lifetimePrompt;
+  int get lifetimeCompletionTokens => _tokenUsage.lifetimeCompletion;
+
+  // Backwards-compatible aliases
+  int get totalTokens => tokensToday;
+  int get promptTokens => promptTokensToday;
+  int get completionTokens => completionTokensToday;
+  double _estimatedCostUsd = 0.00;
+  double get estimatedCostUsd => _estimatedCostUsd;
+  
   AppTab _currentTab = AppTab.chat; // Default to Claude Code chat
   AppTab get currentTab => _currentTab;
 
@@ -109,29 +151,6 @@ class AppState extends ChangeNotifier {
     _activeSidebarMode = mode;
     notifyListeners();
   }
-
-  bool _isLoading = false;
-  bool get isLoading => _isLoading;
-
-  bool _isEmergencyStopped = false;
-  bool get isEmergencyStopped => _isEmergencyStopped;
-
-  String _emergencyStopReason = '';
-  String get emergencyStopReason => _emergencyStopReason;
-
-  String? _errorMessage;
-  String? get errorMessage => _errorMessage;
-
-  // --- Token Telemetry Metrics ---
-  int _totalTokens = 24850;
-  int _promptTokens = 18600;
-  int _completionTokens = 6250;
-  double _estimatedCostUsd = 0.00;
-
-  int get totalTokens => _totalTokens;
-  int get promptTokens => _promptTokens;
-  int get completionTokens => _completionTokens;
-  double get estimatedCostUsd => _estimatedCostUsd;
 
   // --- User-Configured Inference Providers (Persisted to disk) ---
   List<Map<String, dynamic>> _customProviders = ProviderStorage.loadProviders();
@@ -430,9 +449,7 @@ class AppState extends ChangeNotifier {
   }
 
   void recordTokenUsage(int prompt, int completion) {
-    _promptTokens += prompt;
-    _completionTokens += completion;
-    _totalTokens = _promptTokens + _completionTokens;
+    _tokenUsage = TokenStorage.recordUsage(prompt, completion);
     notifyListeners();
   }
 

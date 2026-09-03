@@ -90,6 +90,13 @@ class MessageSanitizer {
     String text = rawText.trim();
     final extractedTools = <Map<String, dynamic>>[];
 
+    // 0. Strip XML-style tool calls and function call artifacts
+    text = text.replaceAll(RegExp(r'<tool_call>[\s\S]*?</tool_call>', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'<function_call>[\s\S]*?</function_call>', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'<tool_response>[\s\S]*?</tool_response>', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'FUNCTIONS\.[A-Z_]+\s*\{[\s\S]*?\}', caseSensitive: false), '');
+    text = text.replaceAll(RegExp(r'</?(?:tool_call|function_call|tool_response)>', caseSensitive: false), '');
+
     // 1. Check and extract fenced code blocks containing internal tool JSON
     final codeBlockRegex = RegExp(r'```(?:json|tool|tool_call|function_call)?\s*([\s\S]*?)\s*```', caseSensitive: false);
     text = text.replaceAllMapped(codeBlockRegex, (match) {

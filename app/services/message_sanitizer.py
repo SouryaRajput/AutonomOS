@@ -110,6 +110,13 @@ def extract_user_facing_narrative(
     text = raw_text.strip()
     extracted_tools: list[dict[str, Any]] = []
 
+    # 0. Strip XML-style tool calls and function call artifacts
+    text = re.sub(r"<tool_call>[\s\S]*?</tool_call>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<function_call>[\s\S]*?</function_call>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"<tool_response>[\s\S]*?</tool_response>", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"FUNCTIONS\.[A-Z_]+\s*\{[\s\S]*?\}", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"</?(?:tool_call|function_call|tool_response)>", "", text, flags=re.IGNORECASE)
+
     # 1. First, check and extract code fences that contain internal tool JSON
     def replace_code_fence(match: re.Match) -> str:
         fence_content = match.group(1).strip()

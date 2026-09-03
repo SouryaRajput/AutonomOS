@@ -6,6 +6,7 @@ import '../../services/workspace_service.dart';
 import '../../state/app_state.dart';
 import '../../state/chat_controller.dart';
 import 'manager_activity_popup.dart';
+import 'token_usage_dialog.dart';
 
 /// Context-aware prompt input bar inspired by Cursor & Claude Code.
 /// Supports Enter to send, Shift+Enter for multiline, and native folder selection.
@@ -259,9 +260,40 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ),
                 ),
                 const SizedBox(width: AppTokens.space8),
-                Text(
-                  'Tokens: ${widget.appState.totalTokens}',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: isDark ? AppTokens.darkTextMuted : AppTokens.lightTextMuted),
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => TokenUsageDialog.show(context, widget.appState),
+                    borderRadius: AppTokens.borderRadiusXs,
+                    hoverColor: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: AppTokens.space8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTokens.darkSurface : AppTokens.lightBorder,
+                        borderRadius: AppTokens.borderRadiusXs,
+                        border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.token_outlined,
+                            size: 11,
+                            color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Tokens today: ${TokenUsageDialog.formatNumber(widget.appState.tokensToday)}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
                 ),
               ],
             ),
