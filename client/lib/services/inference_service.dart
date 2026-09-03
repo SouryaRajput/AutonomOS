@@ -12,11 +12,11 @@ class InferenceService {
     String? projectName,
     String? projectMapMarkdown,
     List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
   }) {
     final buffer = StringBuffer();
-    buffer.writeln('You are the AutonomOS Workforce Manager Agent — the HEAD OF THE WORKFORCE.');
-    buffer.writeln('You are NOT a programmer, coder, tester, or general-purpose executor.');
-    buffer.writeln('You do NOT write project code, implement features, or execute tests directly.');
+    buffer.writeln('You are AutonomOS — an autonomous AI engineering workforce combining an Engineering Manager, Specialist Researcher, Senior Programmer, and QA Tester.');
+    buffer.writeln('You are operating directly on the user\'s active codebase to fulfill their engineering goals, answer questions, research solutions, provide code implementations, and diagnose issues.');
     buffer.writeln('');
     buffer.writeln('==================================================');
     buffer.writeln('ACTIVE WORKSPACE BOUNDARY (TARGET PROJECT)');
@@ -29,8 +29,7 @@ class InferenceService {
       buffer.writeln('');
       buffer.writeln('CRITICAL BOUNDARY ENFORCEMENT:');
       buffer.writeln('1. You are operating EXCLUSIVELY on the project inside `$activeWorkingPath`.');
-      buffer.writeln('2. Do NOT inspect, analyze, or refer to the parent AutonomOS tool host codebase unless the user explicitly chose that folder.');
-      buffer.writeln('3. All file paths, dependencies, components, and tasks MUST be relative to `$activeWorkingPath`.');
+      buffer.writeln('2. All file paths, dependencies, components, and recommendations MUST be relative to `$activeWorkingPath`.');
       buffer.writeln('');
     }
 
@@ -50,18 +49,37 @@ class InferenceService {
       buffer.writeln('');
     }
 
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('==================================================');
+      buffer.writeln('PROJECT CONFIGURATION & KEY FILE SNIPPETS:');
+      buffer.writeln('==================================================');
+      keyFilePreviews.forEach((filePath, content) {
+        buffer.writeln('--- File: `$filePath` ---');
+        buffer.writeln(content);
+        buffer.writeln('');
+      });
+    }
+
     buffer.writeln('==================================================');
-    buffer.writeln('ORCHESTRATION MODE: MANAGER CONVERSATION');
-    buffer.writeln('Specialized workers (Researcher, Programmer, Tester) are provisioned on demand as needed by the plan.');
+    buffer.writeln('INSTRUCTIONS FOR COMPLETE & THOROUGH EXECUTION:');
+    buffer.writeln('==================================================');
+    buffer.writeln('1. When the user asks for RESEARCH or ADVICE (e.g. UX improvements, library recommendations, performance, architecture):');
+    buffer.writeln('   - Actively analyze the project architecture, dependencies, and files.');
+    buffer.writeln('   - Provide deep, concrete, actionable recommendations tailored specifically to their tech stack.');
+    buffer.writeln('   - Include code snippets, library suggestions, UX patterns, and implementation steps.');
+    buffer.writeln('   - DO NOT merely say "I will explore" or stop at an empty intent statement — deliver the complete, high-value analysis and solutions immediately.');
+    buffer.writeln('2. When the user asks for CODE CHANGES or BUG FIXES:');
+    buffer.writeln('   - Provide exact code snippets, surgical modifications, and explanations.');
+    buffer.writeln('3. Format your response cleanly using GitHub Markdown (headings, bullet points, code blocks).');
+    buffer.writeln('4. Maintain a professional, confident, engineering-focused tone.');
     buffer.writeln('');
-    buffer.writeln('CRITICAL INSTRUCTION FOR OUTPUT:');
-    buffer.writeln('1. Communicate directly, concisely, and naturally as an autonomous engineering Manager having a conversation with the user.');
-    buffer.writeln('2. Do NOT dump raw checklists ("Planned TASK-01", "TASK-02"), raw task dependency graphs, internal state IDs, or debug logs.');
-    buffer.writeln('3. Do NOT dump a raw list of inspected files or "Context selected:" headers. State naturally what workspace areas you inspected.');
-    buffer.writeln('4. Describe your execution plan conversationally (e.g. "I’ve prepared an execution plan covering the main features and verification.").');
-    buffer.writeln('5. State which specialized worker you are provisioning or dispatching to execute the plan.');
-    buffer.writeln('6. Keep the response crisp, technical, and natural. Do NOT use Jira or checklist-style formatting.');
-    buffer.writeln('');
+    buffer.writeln('==================================================');
+    buffer.writeln('RESPONSE STRUCTURE:');
+    buffer.writeln('==================================================');
+    buffer.writeln('Deliver a rich, structured engineering response containing:');
+    buffer.writeln('• **Workforce Execution Summary**: Brief opening summarizing the Manager plan and work allocated across workers (Researcher, Crawlers, Programmer, QA).');
+    buffer.writeln('• **Specialist Findings & Concrete Recommendations**: In-depth solutions, code examples, UI/UX patterns, and architectural recommendations tailored to the project.');
+    buffer.writeln('• **Implementation Plan / Next Steps**: A concrete roadmap and actionable options for the user to proceed.');
 
     return buffer.toString();
   }
@@ -75,6 +93,7 @@ class InferenceService {
     String? projectName,
     String? projectMapMarkdown,
     List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
   }) async {
     final cleanUrl = baseUrl.trim().endsWith('/')
         ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
@@ -89,6 +108,7 @@ class InferenceService {
       projectName: projectName,
       projectMapMarkdown: projectMapMarkdown,
       scannedFiles: scannedFiles,
+      keyFilePreviews: keyFilePreviews,
     );
 
     // 1. Clean and enforce strict message alternation (user -> assistant -> user)
@@ -140,6 +160,142 @@ class InferenceService {
         rethrow;
       }
     }
+  }
+
+  /// Multi-Agent Phase 1: Manager analyzes request & forms a delegation brief for the Researcher.
+  Future<Map<String, dynamic>> generateManagerPlan({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final cleanUrl = baseUrl.trim().endsWith('/')
+        ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
+        : baseUrl.trim();
+    final endpointUrl = cleanUrl.endsWith('/chat/completions')
+        ? cleanUrl
+        : '$cleanUrl/chat/completions';
+    final uri = Uri.parse(endpointUrl);
+
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
+    buffer.writeln('You have received an engineering goal from the user: "$userPrompt"');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
+    if (scannedFiles != null && scannedFiles.isNotEmpty) {
+      buffer.writeln('Workspace Files:');
+      for (final f in scannedFiles.take(40)) {
+        buffer.writeln('- $f');
+      }
+    }
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nKey Project File Snippets:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- $k ---');
+        buffer.writeln(v);
+      });
+    }
+    buffer.writeln('\nYOUR TASK AS MANAGER IN PHASE 1:');
+    buffer.writeln('1. Formulate a crisp, multi-phase execution plan for this goal.');
+    buffer.writeln('2. Formulate a specific, structured Task Delegation Brief for your Specialist Researcher worker.');
+    buffer.writeln('3. Specify exactly which 3-5 technical questions and codebase areas the Researcher must investigate.');
+
+    final messages = [
+      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager.'},
+      {'role': 'user', 'content': buffer.toString()},
+    ];
+
+    return await _postRequest(uri, apiKey, model, messages);
+  }
+
+  /// Multi-Agent Phase 2: Researcher executes deep codebase investigation based on Manager's brief.
+  Future<Map<String, dynamic>> generateResearcherFindings({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String managerBrief,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final cleanUrl = baseUrl.trim().endsWith('/')
+        ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
+        : baseUrl.trim();
+    final endpointUrl = cleanUrl.endsWith('/chat/completions')
+        ? cleanUrl
+        : '$cleanUrl/chat/completions';
+    final uri = Uri.parse(endpointUrl);
+
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Specialist Researcher.');
+    buffer.writeln('Your Engineering Manager has assigned you the following investigation task:\n');
+    buffer.writeln(managerBrief);
+    buffer.writeln('\nTarget Project: `$pName` in `${activeWorkingPath ?? "."}`');
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nInspected Codebase Configurations & Files:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- File: $k ---');
+        buffer.writeln(v);
+      });
+    }
+    buffer.writeln('\nYOUR TASK AS SPECIALIST RESEARCHER:');
+    buffer.writeln('1. Perform a deep, thorough technical analysis tailored specifically to this codebase and stack.');
+    buffer.writeln('2. Address every question raised by the Manager.');
+    buffer.writeln('3. Provide concrete code patterns, library suggestions, UX/UI improvements, performance optimizations, and exact implementation recommendations.');
+    buffer.writeln('4. Return a comprehensive Research Findings Dossier.');
+
+    final messages = [
+      {'role': 'system', 'content': 'You are the AutonomOS Specialist Researcher. Provide rigorous, deep, concrete technical analysis.'},
+      {'role': 'user', 'content': buffer.toString()},
+    ];
+
+    return await _postRequest(uri, apiKey, model, messages);
+  }
+
+  /// Multi-Agent Phase 3: Manager synthesizes Researcher findings, summarizes for user, and proposes implementation plan.
+  Future<Map<String, dynamic>> generateManagerSynthesis({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    required String managerPlan,
+    required String researcherFindings,
+    String? projectName,
+  }) async {
+    final cleanUrl = baseUrl.trim().endsWith('/')
+        ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
+        : baseUrl.trim();
+    final endpointUrl = cleanUrl.endsWith('/chat/completions')
+        ? cleanUrl
+        : '$cleanUrl/chat/completions';
+    final uri = Uri.parse(endpointUrl);
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Head of the Workforce).');
+    buffer.writeln('User\'s Request: "$userPrompt"');
+    buffer.writeln('Your Initial Plan:\n$managerPlan\n');
+    buffer.writeln('Specialist Researcher Findings Dossier:\n$researcherFindings\n');
+    buffer.writeln('YOUR TASK AS MANAGER:');
+    buffer.writeln('Synthesize these findings and deliver a complete, highly structured response to the user with:');
+    buffer.writeln('1. **Workforce Execution Summary**: Briefly explain how you planned the work and what the Researcher investigated.');
+    buffer.writeln('2. **Key Findings & Recommendations**: The core concrete recommendations, code snippets, architectural improvements, and UI/UX patterns tailored to the project.');
+    buffer.writeln('3. **Proposed Implementation Plan**: A clear step-by-step roadmap for implementing these improvements.');
+    buffer.writeln('4. **Call to Action**: Conclude by asking the user: "Would you like me to proceed with creating an implementation plan for the Programmer and QA Tester to begin implementing these changes?"');
+
+    final messages = [
+      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Communicate directly, professionally, and clearly with the user.'},
+      {'role': 'user', 'content': buffer.toString()},
+    ];
+
+    return await _postRequest(uri, apiKey, model, messages);
   }
 
   Future<Map<String, dynamic>> _postRequest(

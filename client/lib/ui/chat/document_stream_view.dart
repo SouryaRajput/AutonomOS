@@ -105,46 +105,63 @@ class DocumentStreamView extends StatelessWidget {
     );
   }
 
-  // --- Assistant / Manager Turn (Continuous Minimalist Conversational Prose) ---
+  // --- Assistant / Manager Turn (Continuous Minimalist Conversational Prose + Attached Activity Card) ---
   Widget _buildAssistantDocumentTurn(BuildContext context, ChatMessage msg, bool isDark) {
     final extracted = MessageSanitizer.extractUserFacingNarrative(msg.content);
     final rawContent = extracted.userFacingNarrative;
     final blocks = _parseParagraphsAndTools(rawContent);
 
+    ExecutionActivity? activity;
+    if (msg.metadata.containsKey('activity') && msg.metadata['activity'] is Map<String, dynamic>) {
+      try {
+        activity = ExecutionActivity.fromJson(msg.metadata['activity'] as Map<String, dynamic>);
+      } catch (_) {}
+    }
+
     return Container(
       margin: const EdgeInsets.only(bottom: AppTokens.space20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: blocks.map((block) {
-          switch (block.type) {
-            case _BlockType.managerActivity:
-              return _MarkdownParagraph(text: block.content, isDark: isDark);
-            case _BlockType.taskContract:
-              return _TaskContractCard(rawContent: block.content, isDark: isDark);
-            case _BlockType.toolRun:
-              return _CollapsibleToolRow(
-                title: block.title,
-                details: block.content,
-                addedLines: block.addedLines,
-                removedLines: block.removedLines,
-                isDark: isDark,
-              );
-            case _BlockType.actionGroup:
-              return _ActionGroupCard(items: block.items, isDark: isDark);
-            case _BlockType.workingTreeDiff:
-              return _WorkingTreeDiffView(
-                branch: block.title.isNotEmpty ? block.title : 'main',
-                diffFiles: block.diffFiles,
-                isDark: isDark,
-              );
-            case _BlockType.codeBlock:
-              return _CodeFenceView(code: block.content, language: block.title, isDark: isDark);
-            case _BlockType.statusPill:
-              return _StatusAnnotation(text: block.content, isDark: isDark);
-            case _BlockType.paragraph:
-              return _MarkdownParagraph(text: block.content, isDark: isDark);
-          }
-        }).toList(),
+        children: [
+          if (activity != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: AppTokens.space12),
+              child: ExecutionActivityCard(
+                activity: activity,
+                initialExpanded: false,
+              ),
+            ),
+          ...blocks.map((block) {
+            switch (block.type) {
+              case _BlockType.managerActivity:
+                return _MarkdownParagraph(text: block.content, isDark: isDark);
+              case _BlockType.taskContract:
+                return _TaskContractCard(rawContent: block.content, isDark: isDark);
+              case _BlockType.toolRun:
+                return _CollapsibleToolRow(
+                  title: block.title,
+                  details: block.content,
+                  addedLines: block.addedLines,
+                  removedLines: block.removedLines,
+                  isDark: isDark,
+                );
+              case _BlockType.actionGroup:
+                return _ActionGroupCard(items: block.items, isDark: isDark);
+              case _BlockType.workingTreeDiff:
+                return _WorkingTreeDiffView(
+                  branch: block.title.isNotEmpty ? block.title : 'main',
+                  diffFiles: block.diffFiles,
+                  isDark: isDark,
+                );
+              case _BlockType.codeBlock:
+                return _CodeFenceView(code: block.content, language: block.title, isDark: isDark);
+              case _BlockType.statusPill:
+                return _StatusAnnotation(text: block.content, isDark: isDark);
+              case _BlockType.paragraph:
+                return _MarkdownParagraph(text: block.content, isDark: isDark);
+            }
+          }).toList(),
+        ],
       ),
     );
   }

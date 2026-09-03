@@ -56,6 +56,8 @@ class EventModel {
   final String? projectId;
   final String? taskId;
   final String? workerId;
+  final String? correlationId;
+  final String? causationId;
   final Map<String, dynamic> payload;
   final int? sequenceNumber;
 
@@ -67,6 +69,8 @@ class EventModel {
     this.projectId,
     this.taskId,
     this.workerId,
+    this.correlationId,
+    this.causationId,
     this.payload = const {},
     this.sequenceNumber,
   });
@@ -80,6 +84,8 @@ class EventModel {
       projectId: json['project_id'] as String?,
       taskId: json['task_id'] as String?,
       workerId: json['worker_id'] as String?,
+      correlationId: json['correlation_id'] as String?,
+      causationId: json['causation_id'] as String?,
       payload: (json['payload'] as Map<String, dynamic>?) ?? const {},
       sequenceNumber: json['sequence_number'] as int?,
     );
@@ -93,6 +99,8 @@ class EventModel {
     'project_id': projectId,
     'task_id': taskId,
     'worker_id': workerId,
+    'correlation_id': correlationId,
+    'causation_id': causationId,
     'payload': payload,
     'sequence_number': sequenceNumber,
   };
