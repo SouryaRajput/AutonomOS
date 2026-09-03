@@ -180,6 +180,7 @@ class _ChatViewState extends State<ChatView> {
                   messages: widget.controller.messages,
                   isSending: widget.controller.isSending,
                   activeStage: widget.controller.activeStage,
+                  currentActivity: widget.controller.currentActivity,
                   scrollController: _scrollController,
                 ),
               ),

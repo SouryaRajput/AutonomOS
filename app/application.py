@@ -20,6 +20,7 @@ from app.services.storage_service import StorageService
 from app.services.version_service import VersionService
 from app.services.workspace_service import WorkspaceService
 from app.stream.event_stream import EventStreamManager
+from core.activity.projector import WorkforceActivityProjector
 from core.runtime.workforce_runtime import WorkforceRuntime
 from core.safety.model import SafetyConfig
 from core.storage.sqlite_store import SQLiteStore
@@ -36,6 +37,10 @@ class AutonomOSApp:
 
     def __init__(self, runtime: WorkforceRuntime):
         self._runtime = runtime
+
+        # Activity Presentation Projector (Transformation Boundary)
+        self.activity_projector = WorkforceActivityProjector()
+        self._runtime.subscribe_events(self.activity_projector.project_event)
 
         # Initialize Application Services
         self.projects = ProjectService(runtime)

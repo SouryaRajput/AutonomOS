@@ -221,7 +221,22 @@ class AutonomOSRequestHandler(BaseHTTPRequestHandler):
                 info = self.app.storage.get_storage_info(pid)
                 return self._send_json(200, info)
 
-            # 12. Activity Feed
+            # 12. Activity Feed & Execution Presentation
+            if path == "/api/activity/execution":
+                pid = q("project_id")
+                tid = q("task_id")
+                cid = q("correlation_id")
+                key = cid or tid or (f"{pid}-main" if pid else "global-main")
+                act = self.app.activity_projector.get_activity(key)
+                if not act:
+                    act = self.app.activity_projector.get_or_create_activity(project_id=pid, task_id=tid, correlation_id=cid)
+                return self._send_json(200, act.to_dict())
+
+            if path == "/api/activity/executions":
+                pid = q("project_id") or None
+                acts = self.app.activity_projector.list_activities(pid)
+                return self._send_json(200, [a.to_dict() for a in acts])
+
             if path == "/api/activity":
                 pid = q("project_id")
                 limit = int(q("limit", "50"))

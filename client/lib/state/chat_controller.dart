@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../core/utils/message_sanitizer.dart';
 import '../models/conversation.dart';
+import '../models/execution_activity.dart';
 import '../repositories/conversation_repository.dart';
+import '../services/activity_projector.dart';
 import '../services/inference_service.dart';
 import '../services/local_workspace_auditor.dart';
 import 'app_state.dart';
@@ -12,6 +15,7 @@ class ChatController extends ChangeNotifier {
   final String projectId;
   final AppState? appState;
   final InferenceService _inferenceService = InferenceService();
+  StreamSubscription<ExecutionActivity>? _activitySub;
 
   ChatConversation? _conversation;
   ChatConversation? get conversation => _conversation;
@@ -24,9 +28,12 @@ class ChatController extends ChangeNotifier {
   bool _isSending = false;
   bool get isSending => _isSending;
 
+  ExecutionActivity? _currentActivity;
+  ExecutionActivity? get currentActivity => _currentActivity;
+
   String _currentActivityTitle = '';
-  String get currentActivityTitle => _currentActivityTitle;
-  String get activeStage => _currentActivityTitle;
+  String get currentActivityTitle => _currentActivity?.currentAction ?? _currentActivityTitle;
+  String get activeStage => _currentActivity?.currentAction ?? _currentActivityTitle;
 
   String _currentActivitySubtitle = '';
   String get currentActivitySubtitle => _currentActivitySubtitle;
@@ -40,11 +47,24 @@ class ChatController extends ChangeNotifier {
     this.appState,
     ChatConversation? initialConversation,
   }) {
+    _activitySub = ActivityProjectorService().activityStream.listen((activity) {
+      if (activity.projectId == projectId || activity.correlationId == _conversation?.id || activity.taskId.isNotEmpty) {
+        _currentActivity = activity;
+        notifyListeners();
+      }
+    });
+
     if (initialConversation != null) {
       _conversation = initialConversation;
     } else {
       loadActiveConversation();
     }
+  }
+
+  @override
+  void dispose() {
+    _activitySub?.cancel();
+    super.dispose();
   }
 
   Future<void> loadActiveConversation() async {
@@ -148,6 +168,23 @@ class ChatController extends ChangeNotifier {
     _currentActivityTitle = 'Exploring workspace…';
     _currentActivitySubtitle = 'Reading project structure and relevant files';
     _errorMessage = null;
+
+    final startNow = DateTime.now().toIso8601String();
+    _currentActivity = ExecutionActivity(
+      activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+      projectId: projectId,
+      correlationId: _conversation!.id,
+      workerId: 'worker.manager',
+      workerType: 'Manager',
+      title: 'Manager — Active',
+      status: ActivityStatus.running,
+      startTime: startNow,
+      currentAction: 'Exploring workspace and reading configuration…',
+      isLive: true,
+      commands: const [
+        CommandLineItem(command: 'git status --short', isRunning: false, exitCode: 0),
+      ],
+    );
     notifyListeners();
 
     // 2. Prepare clean message history strictly from this conversation's messages
@@ -188,6 +225,7 @@ class ChatController extends ChangeNotifier {
       );
       appState?.updateConversation(_conversation!);
       _isSending = false;
+      _currentActivity = null;
       _currentActivityTitle = '';
       _currentActivitySubtitle = '';
       notifyListeners();
@@ -203,6 +241,19 @@ class ChatController extends ChangeNotifier {
       // Stage 1: Inspect workspace and read repository state
       _currentActivityTitle = 'Inspecting workspace…';
       _currentActivitySubtitle = 'Reading project structure and relevant files';
+      _currentActivity = ExecutionActivity(
+        activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+        projectId: projectId,
+        correlationId: _conversation!.id,
+        workerId: 'worker.manager',
+        workerType: 'Manager',
+        title: 'Manager — Active',
+        status: ActivityStatus.running,
+        startTime: startNow,
+        currentAction: 'Inspecting workspace structure & project files…',
+        isLive: true,
+        commands: _currentActivity?.commands ?? const [],
+      );
       notifyListeners();
 
       Map<String, dynamic> auditResult = {};
@@ -248,6 +299,24 @@ class ChatController extends ChangeNotifier {
       // Stage 2: Preparing execution plan
       _currentActivityTitle = 'Preparing execution plan…';
       _currentActivitySubtitle = 'Breaking the goal into dependent tasks';
+      _currentActivity = ExecutionActivity(
+        activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+        projectId: projectId,
+        correlationId: _conversation!.id,
+        workerId: 'worker.manager',
+        workerType: 'Manager',
+        title: 'Manager — Active',
+        status: ActivityStatus.running,
+        startTime: startNow,
+        currentAction: 'Formulating task execution plan…',
+        completedActions: [
+          '✓ Inspected workspace structure',
+          if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+        ],
+        filesRead: scannedFiles,
+        commands: _currentActivity?.commands ?? const [],
+        isLive: true,
+      );
       notifyListeners();
 
       final result = await _inferenceService.generateCompletion(
@@ -303,7 +372,29 @@ class ChatController extends ChangeNotifier {
           'Please verify your API key, base URL, and model name in Settings.';
     }
 
-    // 4. Append natural conversational Manager message
+    // 4. Finalize execution activity state
+    final completedActions = List<String>.from(_currentActivity?.completedActions ?? []);
+    if (!completedActions.contains('✓ Formulated work plan')) {
+      completedActions.add('✓ Formulated work plan');
+    }
+    _currentActivity = ExecutionActivity(
+      activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+      projectId: projectId,
+      correlationId: _conversation!.id,
+      workerId: 'worker.manager',
+      workerType: 'Manager',
+      title: 'Manager — Completed',
+      status: ActivityStatus.completed,
+      startTime: startNow,
+      endTime: DateTime.now().toIso8601String(),
+      currentAction: 'Execution completed',
+      completedActions: completedActions,
+      filesRead: _currentActivity?.filesRead ?? const [],
+      commands: _currentActivity?.commands ?? const [],
+      isLive: false,
+    );
+
+    // 5. Append natural conversational Manager message
     final now = DateTime.now().toIso8601String();
     final managerMsg = ChatMessage(
       id: 'msg-${DateTime.now().millisecondsSinceEpoch + 1}',

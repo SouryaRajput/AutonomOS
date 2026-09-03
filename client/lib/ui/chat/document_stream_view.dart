@@ -3,15 +3,18 @@ import 'package:flutter/services.dart';
 import '../../core/tokens/tokens.dart';
 import '../../core/utils/message_sanitizer.dart';
 import '../../models/conversation.dart';
+import '../../models/execution_activity.dart';
 import '../../models/manager_activity.dart';
+import 'execution_activity_card.dart';
 import 'minimalist_manager_header.dart';
 
 /// Continuous Agent Document Stream canvas inspired by Cursor & Claude Code.
-/// Renders crisp agent prose, compact tool summaries, grouped action lists, and inline working-tree diffs.
+/// Renders crisp agent prose, compact tool summaries, grouped action lists, and execution activity cards.
 class DocumentStreamView extends StatelessWidget {
   final List<ChatMessage> messages;
   final bool isSending;
   final String activeStage;
+  final ExecutionActivity? currentActivity;
   final ScrollController scrollController;
 
   const DocumentStreamView({
@@ -19,6 +22,7 @@ class DocumentStreamView extends StatelessWidget {
     required this.messages,
     required this.isSending,
     this.activeStage = 'Understanding intent and checking workspace...',
+    this.currentActivity,
     required this.scrollController,
   });
 
@@ -145,8 +149,18 @@ class DocumentStreamView extends StatelessWidget {
     );
   }
 
-  // --- Real-Time In-Flight State (Smooth Animated Gray Text at Top of Incoming Turn) ---
+  // --- Real-Time In-Flight State (Clean Activity Card or Animated Header) ---
   Widget _buildThinkingRow(BuildContext context, bool isDark) {
+    if (currentActivity != null) {
+      return Container(
+        margin: const EdgeInsets.only(top: AppTokens.space6, bottom: AppTokens.space16),
+        child: ExecutionActivityCard(
+          activity: currentActivity!,
+          initialExpanded: false,
+        ),
+      );
+    }
+
     return Container(
       margin: const EdgeInsets.only(top: AppTokens.space10, bottom: AppTokens.space20),
       child: MinimalistManagerStateHeader(
