@@ -22,7 +22,7 @@ from core.research.crawler.base import BaseCrawler
 from core.research.crawler.capability import CrawlerCapabilitySpec, matches_capability
 from core.research.crawler.lifecycle import CrawlerStateMachine
 from core.research.crawler.mock_crawler import MockCrawler
-from core.research.crawler.registry import CrawlerRegistry
+from core.research.crawler.community import CommunityCrawler
 from core.research.crawler.documentation import DocumentationCrawler
 from core.research.crawler.repository import RepositoryCrawler
 from core.research.crawler.web_fetch import WebFetchCrawler

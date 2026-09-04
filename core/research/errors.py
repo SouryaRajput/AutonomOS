@@ -417,5 +417,114 @@ class RepositorySecurityError(RepositoryProviderError):
         self.reason = reason
 
 
+# Community-specific Errors
+class CommunityError(ResearchError):
+    """Base exception for community and discussion subsystem errors."""
+    pass
 
+
+class CommunityValidationError(CommunityError):
+    """Raised when community context, discussion, post, or thread structure fails validation."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid community model '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.field_name = field_name
+        self.reason = reason
+
+
+class CommunityProviderError(CommunityError):
+    """Base exception for community and discussion data access provider failures."""
+    def __init__(self, message: str, details: Optional[dict] = None):
+        super().__init__(message, details)
+
+
+class CommunityDiscussionNotFoundError(CommunityProviderError):
+    """Raised when a requested discussion thread, forum post, or topic cannot be found or resolved."""
+    def __init__(self, discussion_id: str, message: str = "", details: Optional[dict] = None):
+        msg = f"Discussion not found: '{discussion_id}'"
+        if message:
+            msg += f" ({message})"
+        d = {"discussion_id": discussion_id}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.discussion_id = discussion_id
+
+
+class CommunityResourceLimitError(CommunityProviderError):
+    """Raised when an operation exceeds community resource bounds (e.g. max_posts, max_depth, max_bytes)."""
+    def __init__(self, resource_type: str, actual_value: int | float, max_limit: int | float, details: Optional[dict] = None):
+        msg = f"Community resource limit exceeded for {resource_type}: {actual_value} > {max_limit}"
+        d = {"resource_type": resource_type, "actual_value": actual_value, "max_limit": max_limit}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.resource_type = resource_type
+        self.actual_value = actual_value
+        self.max_limit = max_limit
+
+
+class CommunityTimeoutError(CommunityProviderError):
+    """Raised when a community provider operation times out."""
+    def __init__(self, target: str, operation: str, timeout_seconds: float, details: Optional[dict] = None):
+        msg = f"Community operation '{operation}' for '{target}' timed out after {timeout_seconds}s"
+        d = {"target": target, "operation": operation, "timeout_seconds": timeout_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds
+
+
+class CommunityCancelledError(CommunityProviderError):
+    """Raised when a community operation is cancelled by the caller or supervisor."""
+    def __init__(self, target: str = "", operation: str = "", message: str = "", details: Optional[dict] = None):
+        msg = f"Community operation '{operation}' for '{target}' was cancelled"
+        if message:
+            msg += f": {message}"
+        d = {"target": target, "operation": operation}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.operation = operation
+
+
+class CommunityAuthenticationError(CommunityProviderError):
+    """Raised when community access is rejected due to invalid authentication or private access."""
+    def __init__(self, target: str, message: str = "Authentication failed or access restricted", details: Optional[dict] = None):
+        msg = f"Community authentication / authorization failure for '{target}': {message}"
+        d = {"target": target, "message": message}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+
+
+class CommunityRateLimitError(CommunityProviderError):
+    """Raised when community platform rate limits or quotas are exceeded."""
+    def __init__(self, provider_id: str, retry_after_seconds: float = 30.0, details: Optional[dict] = None):
+        msg = f"Community provider '{provider_id}' rate limit exceeded (retry after {retry_after_seconds}s)"
+        d = {"provider_id": provider_id, "retry_after_seconds": retry_after_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.provider_id = provider_id
+        self.retry_after_seconds = retry_after_seconds
+
+
+class CommunitySecurityError(CommunityProviderError):
+    """Raised when a community target or URL violates security policies (SSRF, forbidden domain)."""
+    def __init__(self, target: str, reason: str, details: Optional[dict] = None):
+        msg = f"Community security violation for '{target}': {reason}"
+        d = {"target": target, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.reason = reason
 
