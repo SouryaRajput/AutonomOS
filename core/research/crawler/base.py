@@ -55,6 +55,11 @@ class BaseCrawler(ABC):
         return self.crawler_id
 
     @property
+    def health_status(self) -> CrawlerHealthStatus:
+        """Return the crawler's health status."""
+        return self.health
+
+    @property
     def capabilities(self) -> list[CrawlerCapability]:
         """Return the list of declared capabilities for this crawler."""
         return list(self._capabilities)

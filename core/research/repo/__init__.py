@@ -1,0 +1,145 @@
+"""
+Repository Subsystem Package (Phase 1 / Part 5 / Steps 1, 2, 3, & 4).
+
+Provides repository domain models, abstract provider interfaces, deterministic mock provider,
+local fixture-backed provider, repository discovery engine, and targeted repository crawler engine.
+"""
+from core.research.errors import (
+    RepositoryAuthenticationError,
+    RepositoryCancelledError,
+    RepositoryError,
+    RepositoryFileNotFoundError,
+    RepositoryNotFoundError,
+    RepositoryProviderError,
+    RepositoryRateLimitError,
+    RepositoryResourceLimitError,
+    RepositoryRevisionNotFoundError,
+    RepositorySecurityError,
+    RepositoryTimeoutError,
+    RepositoryValidationError,
+)
+from core.research.repo.discovery import (
+    KNOWN_MANIFEST_ECOSYSTEM_MAP,
+    DiscoveredRepository,
+    RepositoryDiscoveryEngine,
+    RepositoryDiscoveryOptions,
+    classify_manifest_ecosystem,
+    is_documentation_file,
+    is_manifest_file,
+    is_readme_file,
+)
+from core.research.repo.local_provider import LocalRepositoryProvider
+from core.research.repo.mock_provider import MockRepositoryProvider
+from core.research.repo.models import (
+    EXTENSION_LANGUAGE_MAP,
+    KNOWN_BINARY_EXTENSIONS,
+    LineRange,
+    RepoVersionCategory,
+    RepoVersionContext,
+    RepositoryDirectory,
+    RepositoryFile,
+    RepositoryIdentity,
+    RepositoryProviderType,
+    RepositoryRevision,
+    RepositorySource,
+    RepositorySourceMaterial,
+    RepositoryTree,
+    compute_sha256,
+    detect_file_language,
+    is_known_binary_extension,
+    normalize_repo_path,
+)
+from core.research.repo.provider import (
+    RepositoryFetchLimits,
+    RepositoryFileParams,
+    RepositoryProvider,
+    RepositoryTreeParams,
+)
+from core.research.repo.targeted import (
+    CandidateRepoFile,
+    RepoTopicQuery,
+    RepositoryRelevanceScorer,
+    TargetedRepoCrawlResult,
+    TargetedRepositoryEngine,
+    classify_file_category,
+)
+from core.research.repo.structure import (
+    CodeBlock,
+    CodeClass,
+    CodeConstant,
+    CodeExport,
+    CodeFunction,
+    CodeImport,
+    CodeParsingStatus,
+    CodeStructureExtractor,
+    StructuredCodeFile,
+    SymbolKind,
+)
+
+__all__ = [
+    # Models
+    "EXTENSION_LANGUAGE_MAP",
+    "KNOWN_BINARY_EXTENSIONS",
+    "LineRange",
+    "RepoVersionCategory",
+    "RepoVersionContext",
+    "RepositoryDirectory",
+    "RepositoryFile",
+    "RepositoryIdentity",
+    "RepositoryProviderType",
+    "RepositoryRevision",
+    "RepositorySource",
+    "RepositorySourceMaterial",
+    "RepositoryTree",
+    "compute_sha256",
+    "detect_file_language",
+    "is_known_binary_extension",
+    "normalize_repo_path",
+    # Providers & Parameters
+    "RepositoryFetchLimits",
+    "RepositoryFileParams",
+    "RepositoryProvider",
+    "RepositoryTreeParams",
+    "MockRepositoryProvider",
+    "LocalRepositoryProvider",
+    # Discovery
+    "DiscoveredRepository",
+    "RepositoryDiscoveryEngine",
+    "RepositoryDiscoveryOptions",
+    "KNOWN_MANIFEST_ECOSYSTEM_MAP",
+    "classify_manifest_ecosystem",
+    "is_documentation_file",
+    "is_manifest_file",
+    "is_readme_file",
+    # Targeted Engine & Scorer
+    "CandidateRepoFile",
+    "RepoTopicQuery",
+    "RepositoryRelevanceScorer",
+    "TargetedRepoCrawlResult",
+    "TargetedRepositoryEngine",
+    "classify_file_category",
+    # Code Structure Models & Extractor
+    "CodeBlock",
+    "CodeClass",
+    "CodeConstant",
+    "CodeExport",
+    "CodeFunction",
+    "CodeImport",
+    "CodeParsingStatus",
+    "CodeStructureExtractor",
+    "StructuredCodeFile",
+    "SymbolKind",
+    # Errors
+    "RepositoryAuthenticationError",
+    "RepositoryCancelledError",
+    "RepositoryError",
+    "RepositoryFileNotFoundError",
+    "RepositoryNotFoundError",
+    "RepositoryProviderError",
+    "RepositoryRateLimitError",
+    "RepositoryResourceLimitError",
+    "RepositoryRevisionNotFoundError",
+    "RepositorySecurityError",
+    "RepositoryTimeoutError",
+    "RepositoryValidationError",
+]

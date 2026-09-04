@@ -277,4 +277,145 @@ class DocumentationValidationError(DocumentationError):
         self.reason = reason
 
 
+# Repository-specific Errors
+class RepositoryError(ResearchError):
+    """Base exception for repository subsystem errors."""
+    pass
+
+
+class RepositoryValidationError(RepositoryError):
+    """Raised when repository identity, revision, tree, file, or source material fails validation."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid repository model '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.field_name = field_name
+        self.reason = reason
+
+
+class RepositoryProviderError(RepositoryError):
+    """Base exception for repository data access provider failures."""
+    def __init__(self, message: str, details: Optional[dict] = None):
+        super().__init__(message, details)
+
+
+class RepositoryNotFoundError(RepositoryProviderError):
+    """Raised when a repository cannot be found or resolved by URL / identifier."""
+    def __init__(self, repo_target: str, message: str = "", details: Optional[dict] = None):
+        msg = f"Repository not found: '{repo_target}'"
+        if message:
+            msg += f" ({message})"
+        d = {"repo_target": repo_target}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+
+
+class RepositoryRevisionNotFoundError(RepositoryProviderError):
+    """Raised when a specified revision (commit SHA, branch, tag) does not exist."""
+    def __init__(self, repo_target: str, revision: str, message: str = "", details: Optional[dict] = None):
+        msg = f"Revision '{revision}' not found for repository '{repo_target}'"
+        if message:
+            msg += f" ({message})"
+        d = {"repo_target": repo_target, "revision": revision}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+        self.revision = revision
+
+
+class RepositoryFileNotFoundError(RepositoryProviderError):
+    """Raised when a requested file does not exist at the specified revision."""
+    def __init__(self, repo_target: str, file_path: str, revision: Optional[str] = None, details: Optional[dict] = None):
+        rev_str = f" at revision '{revision}'" if revision else ""
+        msg = f"File '{file_path}' not found in repository '{repo_target}'{rev_str}"
+        d = {"repo_target": repo_target, "file_path": file_path, "revision": revision}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+        self.file_path = file_path
+        self.revision = revision
+
+
+class RepositoryResourceLimitError(RepositoryProviderError):
+    """Raised when an operation exceeds resource bounds (e.g. max_file_bytes, max_tree_depth, max_files)."""
+    def __init__(self, resource_type: str, actual_value: int | float, max_limit: int | float, details: Optional[dict] = None):
+        msg = f"Repository resource limit exceeded for {resource_type}: {actual_value} > {max_limit}"
+        d = {"resource_type": resource_type, "actual_value": actual_value, "max_limit": max_limit}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.resource_type = resource_type
+        self.actual_value = actual_value
+        self.max_limit = max_limit
+
+
+class RepositoryTimeoutError(RepositoryProviderError):
+    """Raised when a repository provider operation times out."""
+    def __init__(self, repo_target: str, operation: str, timeout_seconds: float, details: Optional[dict] = None):
+        msg = f"Repository operation '{operation}' for '{repo_target}' timed out after {timeout_seconds}s"
+        d = {"repo_target": repo_target, "operation": operation, "timeout_seconds": timeout_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds
+
+
+class RepositoryCancelledError(RepositoryProviderError):
+    """Raised when a repository operation is cancelled."""
+    def __init__(self, repo_target: str = "", operation: str = "", message: str = "", details: Optional[dict] = None):
+        msg = f"Repository operation '{operation}' for '{repo_target}' was cancelled"
+        if message:
+            msg += f": {message}"
+        d = {"repo_target": repo_target, "operation": operation}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+        self.operation = operation
+
+
+class RepositoryAuthenticationError(RepositoryProviderError):
+    """Raised when repository access is rejected due to invalid authentication or insufficient permissions."""
+    def __init__(self, repo_target: str, message: str = "Authentication failed", details: Optional[dict] = None):
+        msg = f"Repository authentication failure for '{repo_target}': {message}"
+        d = {"repo_target": repo_target, "message": message}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.repo_target = repo_target
+
+
+class RepositoryRateLimitError(RepositoryProviderError):
+    """Raised when provider rate limits are exceeded."""
+    def __init__(self, provider_id: str, retry_after_seconds: float = 30.0, details: Optional[dict] = None):
+        msg = f"Repository provider '{provider_id}' rate limit exceeded (retry after {retry_after_seconds}s)"
+        d = {"provider_id": provider_id, "retry_after_seconds": retry_after_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.provider_id = provider_id
+        self.retry_after_seconds = retry_after_seconds
+
+
+class RepositorySecurityError(RepositoryProviderError):
+    """Raised when a repository target or path violates security policy (SSRF, traversal escaping root)."""
+    def __init__(self, target_or_path: str, reason: str, details: Optional[dict] = None):
+        msg = f"Repository security violation for '{target_or_path}': {reason}"
+        d = {"target_or_path": target_or_path, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target_or_path = target_or_path
+        self.reason = reason
+
+
+
 

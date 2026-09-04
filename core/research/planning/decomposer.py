@@ -114,14 +114,16 @@ class ResearchDecomposer:
     @classmethod
     def _infer_capabilities(cls, question_text: str, mode: ResearchMode) -> list[CrawlerCapability]:
         """Infer required crawler capabilities from question text."""
-        caps: list[CrawlerCapability] = [CrawlerCapability.WEB_SEARCH]
+        caps: list[CrawlerCapability] = []
         q_lower = question_text.lower()
-        if "fetch" in q_lower or "url" in q_lower or "page" in q_lower or "http" in q_lower:
-            caps.append(CrawlerCapability.WEB_FETCH)
         if "repo" in q_lower or "code" in q_lower or "github" in q_lower:
             caps.append(CrawlerCapability.REPOSITORY_INSPECTION)
+        if "fetch" in q_lower or "url" in q_lower or "page" in q_lower or "http" in q_lower:
+            caps.append(CrawlerCapability.WEB_FETCH)
         if "memory" in q_lower or "project" in q_lower:
             caps.append(CrawlerCapability.PROJECT_MEMORY_LOOKUP)
+        if not caps:
+            caps.append(CrawlerCapability.WEB_SEARCH)
         return caps
 
     @classmethod

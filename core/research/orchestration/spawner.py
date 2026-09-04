@@ -21,8 +21,13 @@ class CrawlerSpawner:
     Supports 1-to-1, 1-to-N crawler allocations, dynamic replacements, and on-demand expansion.
     """
 
-    def __init__(self, registry: Optional[CrawlerRegistry] = None):
+    def __init__(
+        self,
+        registry: Optional[CrawlerRegistry] = None,
+        repo_provider: Optional[Any] = None,
+    ):
         self.registry = registry or CrawlerRegistry()
+        self.repo_provider = repo_provider
 
     def spawn_crawlers_for_plan(
         self,
@@ -55,7 +60,16 @@ class CrawlerSpawner:
                 if c not in allocated_crawlers and len(allocated_crawlers) < target_count and not c.is_busy():
                     allocated_crawlers.append(c)
 
-        # 2. If more crawlers needed to reach target_count, instantiate dynamic crawlers
+        # 2. Allocate crawlers for missing capabilities first
+        missing_caps = [cap for cap in required_caps if not any(c.has_capability(cap) for c in allocated_crawlers)]
+        for cap in missing_caps:
+            if len(allocated_crawlers) >= target_count:
+                break
+            dynamic_crawler = self._create_crawler_for_capability(cap, index=len(allocated_crawlers) + 1)
+            self.registry.register_crawler_instance(dynamic_crawler)
+            allocated_crawlers.append(dynamic_crawler)
+
+        # 3. If more crawlers needed to reach target_count, instantiate dynamic crawlers
         caps_list = list(required_caps)
         cap_idx = 0
         while len(allocated_crawlers) < target_count:
@@ -168,6 +182,14 @@ class CrawlerSpawner:
     ) -> BaseCrawler:
         """Instantiate a crawler instance configured with multiple capabilities."""
         primary_cap = capabilities[0] if capabilities else CrawlerCapability.WEB_SEARCH
+        if primary_cap == CrawlerCapability.REPOSITORY_INSPECTION or CrawlerCapability.REPOSITORY_INSPECTION in capabilities:
+            from core.research.crawler.repository import RepositoryCrawler
+            return RepositoryCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+                provider=self.repo_provider,
+            )
         if primary_cap in (CrawlerCapability.DOCUMENTATION_CRAWL, CrawlerCapability.DOCUMENT_SCRAPING):
             from core.research.crawler.documentation import DocumentationCrawler
             return DocumentationCrawler(
