@@ -133,6 +133,30 @@ class DocumentStreamView extends StatelessWidget {
             ),
           ...blocks.map((block) {
             switch (block.type) {
+              case _BlockType.heading1:
+                return _Heading1View(text: block.content, isDark: isDark);
+              case _BlockType.heading2:
+                return _Heading2View(text: block.content, isDark: isDark);
+              case _BlockType.heading3:
+                return _Heading3View(text: block.content, isDark: isDark);
+              case _BlockType.divider:
+                return _DividerView(isDark: isDark);
+              case _BlockType.table:
+                return _MarkdownTableView(
+                  headers: block.tableHeaders,
+                  rows: block.tableRows,
+                  isDark: isDark,
+                );
+              case _BlockType.bulletList:
+                return _BulletListView(items: block.items, isDark: isDark);
+              case _BlockType.orderedList:
+                return _OrderedListView(items: block.items, isDark: isDark);
+              case _BlockType.callout:
+                return _CalloutBoxView(
+                  text: block.content,
+                  isDark: isDark,
+                  title: block.title.isNotEmpty ? block.title : null,
+                );
               case _BlockType.managerActivity:
                 return _MarkdownParagraph(text: block.content, isDark: isDark);
               case _BlockType.taskContract:
@@ -230,133 +254,239 @@ class DocumentStreamView extends StatelessWidget {
     final blocks = <_ParsedBlock>[];
     final lines = text.split('\n');
 
-    bool inCodeBlock = false;
-    String codeLang = '';
-    final codeBuffer = StringBuffer();
-    final textBuffer = StringBuffer();
+    int i = 0;
+    while (i < lines.length) {
+      final line = lines[i];
+      final trimmed = line.trim();
 
-    void flushText() {
-      if (textBuffer.isNotEmpty) {
-        final t = textBuffer.toString().trim();
-        if (t.isNotEmpty) {
-          if (MessageSanitizer.isInternalToolJson(t)) {
-            // Internal tool invocation: hide from normal chat transcript
-          } else if (t.startsWith('--- TASK CONTRACT:')) {
-            blocks.add(_ParsedBlock(type: _BlockType.taskContract, title: '', content: t));
-          } else if (t.contains('📁 main → working tree') || t.contains('working tree')) {
-            blocks.add(_parseWorkingTreeDiff(t));
-          } else if (t.toLowerCase().contains('context selected:') || t.toLowerCase().startsWith('context selected:')) {
-            // Strip raw context file dump — replace with clean conversational line
-            blocks.add(_ParsedBlock(
-              type: _BlockType.paragraph,
-              title: '',
-              content: 'I inspected the workspace and verified the active repository structure.',
-            ));
-          } else if (t.contains('● ') || (t.contains('✓ ') && (t.contains('Project') || t.contains('TASK') || t.contains('files') || t.contains('Map')))) {
-            final cleanLines = t.split('\n')
-                .where((l) => !l.contains('Decision:') && !l.contains('Reason:') && !l.contains('Planned TASK-') && !l.toLowerCase().contains('context selected:'))
-                .map((l) {
-                  final trimmed = l.trim();
-                  if (trimmed.startsWith('✓ Project understood')) return 'I inspected the workspace and mapped the repository architecture.';
-                  if (trimmed.startsWith('✓ Work plan prepared')) return '✓ Plan prepared — tasks defined across implementation and verification.';
-                  if (trimmed.startsWith('⏸ Workers')) return "I'm waiting for a Programmer to become available before execution can begin.";
-                  return trimmed;
-                })
-                .where((l) => l.isNotEmpty && !l.startsWith('- src/') && !l.startsWith('- public/') && !l.startsWith('- package.json'))
-                .join('\n\n');
-            if (cleanLines.isNotEmpty) {
-              blocks.add(_ParsedBlock(type: _BlockType.paragraph, title: '', content: cleanLines));
-            }
-          } else if (t.startsWith('Read ') || t.startsWith('Ran ') || t.startsWith('Checked ') || t.startsWith('Updated ') || t.startsWith('Typechecked ') || t.startsWith('Linted ') || t.startsWith('Found ')) {
-            // Check if multiple single-line actions form a grouped action list (Image 2)
-            final actionLines = t.split('\n').where((l) => l.trim().isNotEmpty).toList();
-            if (actionLines.length > 1 && actionLines.every((l) => l.trim().startsWith('Typechecked ') || l.trim().startsWith('Linted ') || l.trim().startsWith('Found ') || l.trim().startsWith('Read ') || l.trim().startsWith('Ran '))) {
-              blocks.add(_ParsedBlock(
-                type: _BlockType.actionGroup,
-                title: '',
-                content: '',
-                items: actionLines.map((l) => l.trim().replaceAll(RegExp(r'\s*>$'), '')).toList(),
-              ));
-            } else {
-              int added = 0;
-              int removed = 0;
-              final match = RegExp(r'\+(\d+)\s+-(\d+)').firstMatch(t);
-              if (match != null) {
-                added = int.tryParse(match.group(1) ?? '0') ?? 0;
-                removed = int.tryParse(match.group(2) ?? '0') ?? 0;
-              }
-              final cleanTitle = t.replaceAll(RegExp(r'\+(\d+)\s+-(\d+)'), '').replaceAll(RegExp(r'\s*>$'), '').trim();
-              blocks.add(_ParsedBlock(
-                type: _BlockType.toolRun,
-                title: cleanTitle,
-                content: '',
-                addedLines: added,
-                removedLines: removed,
-              ));
-            }
-          } else if (t.startsWith('Compacted conversation') || t.startsWith('Diagnosis is clear') || t.startsWith('Workers DISABLED') || t.startsWith('Workers disabled')) {
-            blocks.add(_ParsedBlock(type: _BlockType.statusPill, title: '', content: t));
-          } else {
-            blocks.add(_ParsedBlock(type: _BlockType.paragraph, title: '', content: t));
-          }
-        }
-        textBuffer.clear();
+      // 1. Skip blank lines
+      if (trimmed.isEmpty) {
+        i++;
+        continue;
       }
-    }
 
-    for (final line in lines) {
-      if (line.trim().startsWith('```')) {
-        if (inCodeBlock) {
-          inCodeBlock = false;
-          final c = codeBuffer.toString().trim();
-          if (MessageSanitizer.isInternalToolJson(c)) {
-            // Internal tool call in code block: hide from normal chat transcript
-          } else if (c.contains('TASK CONTRACT:')) {
-            blocks.add(_ParsedBlock(
-              type: _BlockType.taskContract,
-              title: codeLang,
-              content: c,
-            ));
-          } else if (codeLang == 'diff' || c.startsWith('diff --git') || (c.contains('@@') && (c.contains('\n-') || c.contains('\n+')))) {
-            blocks.add(_parseWorkingTreeDiff(c));
-          } else {
-            blocks.add(_ParsedBlock(
-              type: _BlockType.codeBlock,
-              title: codeLang,
-              content: c,
-            ));
-          }
-          codeBuffer.clear();
-          codeLang = '';
-        } else {
-          flushText();
-          inCodeBlock = true;
-          codeLang = line.trim().replaceFirst('```', '').trim();
+      // 2. Fenced code block: ```lang
+      if (trimmed.startsWith('```')) {
+        final codeLang = trimmed.replaceFirst('```', '').trim();
+        final codeBuffer = StringBuffer();
+        i++;
+        while (i < lines.length && !lines[i].trim().startsWith('```')) {
+          codeBuffer.writeln(lines[i]);
+          i++;
         }
-      } else if (inCodeBlock) {
-        codeBuffer.writeln(line);
-      } else {
-        if (line.trim().isEmpty) {
-          flushText();
-        } else {
-          textBuffer.writeln(line);
+        if (i < lines.length && lines[i].trim().startsWith('```')) {
+          i++;
         }
-      }
-    }
-
-    if (inCodeBlock) {
-      final c = codeBuffer.toString().trim();
-      if (!MessageSanitizer.isInternalToolJson(c)) {
-        if (c.contains('TASK CONTRACT:')) {
+        final c = codeBuffer.toString().trim();
+        if (MessageSanitizer.isInternalToolJson(c)) {
+          // Internal tool call in code block: hide from normal chat transcript
+        } else if (c.contains('TASK CONTRACT:')) {
           blocks.add(_ParsedBlock(type: _BlockType.taskContract, title: codeLang, content: c));
+        } else if (codeLang == 'diff' || c.startsWith('diff --git') || (c.contains('@@') && (c.contains('\n-') || c.contains('\n+')))) {
+          blocks.add(_parseWorkingTreeDiff(c));
         } else {
           blocks.add(_ParsedBlock(type: _BlockType.codeBlock, title: codeLang, content: c));
         }
+        continue;
+      }
+
+      // 3. Task contract
+      if (trimmed.startsWith('--- TASK CONTRACT:')) {
+        blocks.add(_ParsedBlock(type: _BlockType.taskContract, title: '', content: trimmed));
+        i++;
+        continue;
+      }
+
+      // 4. Working tree diff
+      if (trimmed.contains('📁 main → working tree') || trimmed.contains('working tree')) {
+        blocks.add(_parseWorkingTreeDiff(trimmed));
+        i++;
+        continue;
+      }
+
+      // 5. Divider (---, ***, ___)
+      if (RegExp(r'^(\-{3,}|\*{3,}|_{3,})$').hasMatch(trimmed)) {
+        blocks.add(_ParsedBlock(type: _BlockType.divider, title: '', content: ''));
+        i++;
+        continue;
+      }
+
+      // 6. Headings (#, ##, ###)
+      if (trimmed.startsWith('# ')) {
+        blocks.add(_ParsedBlock(type: _BlockType.heading1, title: '', content: trimmed.substring(2).trim()));
+        i++;
+        continue;
+      }
+      if (trimmed.startsWith('## ')) {
+        blocks.add(_ParsedBlock(type: _BlockType.heading2, title: '', content: trimmed.substring(3).trim()));
+        i++;
+        continue;
+      }
+      if (trimmed.startsWith('### ')) {
+        blocks.add(_ParsedBlock(type: _BlockType.heading3, title: '', content: trimmed.substring(4).trim()));
+        i++;
+        continue;
+      }
+
+      // 7. Markdown Tables
+      if (trimmed.startsWith('|') && trimmed.contains('|') && trimmed.length > 2) {
+        final isDelimiter = RegExp(r'^\s*\|?\s*[-:]+[-| :]*\|?\s*$').hasMatch(trimmed);
+        final hasNextDelimiter = (i + 1 < lines.length) &&
+            RegExp(r'^\s*\|?\s*[-:]+[-| :]*\|?\s*$').hasMatch(lines[i + 1].trim());
+
+        if (hasNextDelimiter || isDelimiter) {
+          final tableLines = <String>[];
+          while (i < lines.length && lines[i].trim().startsWith('|')) {
+            tableLines.add(lines[i].trim());
+            i++;
+          }
+
+          if (tableLines.isNotEmpty) {
+            List<String> headers = [];
+            int startRow = 0;
+            if (isDelimiter) {
+              startRow = 1;
+            } else if (hasNextDelimiter) {
+              headers = _parseTableRow(tableLines[0]);
+              startRow = 2;
+            }
+
+            final rows = <List<String>>[];
+            for (var r = startRow; r < tableLines.length; r++) {
+              if (RegExp(r'^\s*\|?\s*[-:]+[-| :]*\|?\s*$').hasMatch(tableLines[r])) continue;
+              final rowCells = _parseTableRow(tableLines[r]);
+              if (rowCells.isNotEmpty) {
+                rows.add(rowCells);
+              }
+            }
+
+            blocks.add(_ParsedBlock(
+              type: _BlockType.table,
+              title: '',
+              content: '',
+              tableHeaders: headers,
+              tableRows: rows,
+            ));
+            continue;
+          }
+        }
+      }
+
+      // 8. Call to Action / Callout Box
+      if (trimmed.startsWith('**Would you like me to proceed') ||
+          trimmed.startsWith('**Would you like') ||
+          trimmed.startsWith('**Call to Action**')) {
+        final calloutBuffer = StringBuffer(trimmed);
+        i++;
+        while (i < lines.length &&
+               lines[i].trim().isNotEmpty &&
+               !lines[i].trim().startsWith('#') &&
+               !lines[i].trim().startsWith('```') &&
+               !RegExp(r'^(\-{3,}|\*{3,}|_{3,})$').hasMatch(lines[i].trim())) {
+          calloutBuffer.writeln(lines[i]);
+          i++;
+        }
+        blocks.add(_ParsedBlock(
+          type: _BlockType.callout,
+          title: 'Action Proposed',
+          content: calloutBuffer.toString().trim(),
+        ));
+        continue;
+      }
+
+      // 9. Blockquote / Quote
+      if (trimmed.startsWith('>')) {
+        final quoteBuffer = StringBuffer();
+        while (i < lines.length && lines[i].trim().startsWith('>')) {
+          quoteBuffer.writeln(lines[i].trim().replaceFirst(RegExp(r'^>\s*'), ''));
+          i++;
+        }
+        blocks.add(_ParsedBlock(
+          type: _BlockType.callout,
+          title: 'Note',
+          content: quoteBuffer.toString().trim(),
+        ));
+        continue;
+      }
+
+      // 10. Bullet List (- item, * item, + item)
+      if (RegExp(r'^\s*[-*+]\s+').hasMatch(line)) {
+        final items = <String>[];
+        while (i < lines.length && RegExp(r'^\s*[-*+]\s+').hasMatch(lines[i])) {
+          items.add(lines[i].trim().replaceFirst(RegExp(r'^[-*+]\s+'), ''));
+          i++;
+        }
+        blocks.add(_ParsedBlock(type: _BlockType.bulletList, title: '', content: '', items: items));
+        continue;
+      }
+
+      // 11. Numbered List (1. item, 2. item)
+      if (RegExp(r'^\s*\d+\.\s+').hasMatch(line)) {
+        final items = <String>[];
+        while (i < lines.length && RegExp(r'^\s*\d+\.\s+').hasMatch(lines[i])) {
+          items.add(lines[i].trim().replaceFirst(RegExp(r'^\d+\.\s+'), ''));
+          i++;
+        }
+        blocks.add(_ParsedBlock(type: _BlockType.orderedList, title: '', content: '', items: items));
+        continue;
+      }
+
+      // 12. Action lines: Read ..., Ran ..., Checked ...
+      if (trimmed.startsWith('Read ') || trimmed.startsWith('Ran ') || trimmed.startsWith('Checked ') || trimmed.startsWith('Updated ') || trimmed.startsWith('Typechecked ') || trimmed.startsWith('Linted ') || trimmed.startsWith('Found ')) {
+        final actionLines = <String>[trimmed];
+        i++;
+        while (i < lines.length && (lines[i].trim().startsWith('Typechecked ') || lines[i].trim().startsWith('Linted ') || lines[i].trim().startsWith('Found ') || lines[i].trim().startsWith('Read ') || lines[i].trim().startsWith('Ran '))) {
+          actionLines.add(lines[i].trim());
+          i++;
+        }
+        if (actionLines.length > 1) {
+          blocks.add(_ParsedBlock(type: _BlockType.actionGroup, title: '', content: '', items: actionLines));
+        } else {
+          blocks.add(_ParsedBlock(type: _BlockType.toolRun, title: trimmed, content: ''));
+        }
+        continue;
+      }
+
+      // 13. Status Pills
+      if (trimmed.startsWith('Compacted conversation') || trimmed.startsWith('Diagnosis is clear') || trimmed.startsWith('Workers DISABLED') || trimmed.startsWith('Workers disabled')) {
+        blocks.add(_ParsedBlock(type: _BlockType.statusPill, title: '', content: trimmed));
+        i++;
+        continue;
+      }
+
+      // 14. Regular paragraph
+      final paraBuffer = StringBuffer(line);
+      i++;
+      while (i < lines.length) {
+        final nextTrimmed = lines[i].trim();
+        if (nextTrimmed.isEmpty ||
+            nextTrimmed.startsWith('```') ||
+            nextTrimmed.startsWith('#') ||
+            (nextTrimmed.startsWith('|') && nextTrimmed.contains('|')) ||
+            RegExp(r'^(\-{3,}|\*{3,}|_{3,})$').hasMatch(nextTrimmed) ||
+            RegExp(r'^\s*[-*+]\s+').hasMatch(lines[i]) ||
+            RegExp(r'^\s*\d+\.\s+').hasMatch(lines[i]) ||
+            nextTrimmed.startsWith('>')) {
+          break;
+        }
+        paraBuffer.writeln(lines[i]);
+        i++;
+      }
+
+      final p = paraBuffer.toString().trim();
+      if (p.isNotEmpty) {
+        blocks.add(_ParsedBlock(type: _BlockType.paragraph, title: '', content: p));
       }
     }
-    flushText();
 
     return blocks.isNotEmpty ? blocks : [_ParsedBlock(type: _BlockType.paragraph, title: '', content: text)];
+  }
+
+  static List<String> _parseTableRow(String line) {
+    var trimmed = line.trim();
+    if (trimmed.startsWith('|')) trimmed = trimmed.substring(1);
+    if (trimmed.endsWith('|')) trimmed = trimmed.substring(0, trimmed.length - 1);
+    return trimmed.split('|').map((c) => c.trim()).toList();
   }
 
   static _ParsedBlock _parseWorkingTreeDiff(String raw) {
@@ -499,7 +629,24 @@ class DocumentStreamView extends StatelessWidget {
   }
 }
 
-enum _BlockType { paragraph, codeBlock, toolRun, actionGroup, workingTreeDiff, statusPill, taskContract, managerActivity }
+enum _BlockType {
+  paragraph,
+  heading1,
+  heading2,
+  heading3,
+  divider,
+  table,
+  bulletList,
+  orderedList,
+  callout,
+  codeBlock,
+  toolRun,
+  actionGroup,
+  workingTreeDiff,
+  statusPill,
+  taskContract,
+  managerActivity,
+}
 
 class _ParsedBlock {
   final _BlockType type;
@@ -509,6 +656,8 @@ class _ParsedBlock {
   final int removedLines;
   final List<String> items;
   final List<_DiffFileModel> diffFiles;
+  final List<String> tableHeaders;
+  final List<List<String>> tableRows;
 
   _ParsedBlock({
     required this.type,
@@ -518,6 +667,8 @@ class _ParsedBlock {
     this.removedLines = 0,
     this.items = const [],
     this.diffFiles = const [],
+    this.tableHeaders = const [],
+    this.tableRows = const [],
   });
 }
 
@@ -1141,47 +1292,148 @@ class _MarkdownParagraph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppTokens.space10),
+      child: _InlineMarkdownText(text: text, isDark: isDark),
+    );
+  }
+}
+
+// --- Rich Inline Markdown Text Renderer ---
+class _InlineMarkdownText extends StatelessWidget {
+  final String text;
+  final bool isDark;
+  final double fontSize;
+  final FontWeight fontWeight;
+  final double height;
+
+  const _InlineMarkdownText({
+    required this.text,
+    required this.isDark,
+    this.fontSize = 13.5,
+    this.fontWeight = FontWeight.normal,
+    this.height = 1.55,
+  });
+
+  @override
+  Widget build(BuildContext context) {
     final spans = <InlineSpan>[];
-    final regex = RegExp(r'(`[^`]+`|\b\w+\.(?:tsx|ts|py|dart|json|md|yaml|yml)(?::\d+)?\b)');
+
+    final regex = RegExp(
+      r'(`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|\[[^\]]+\]\([^)]+\)|\b(?:[a-zA-Z0-9_\-\.\/]+)\.(?:tsx|ts|jsx|js|py|dart|json|md|yaml|yml|css|scss|html)(?::\d+)?\b)',
+    );
+
     int lastIndex = 0;
+    final defaultColor = isDark ? const Color(0xFFE2E8F0) : const Color(0xFF0F172A);
 
     for (final match in regex.allMatches(text)) {
       if (match.start > lastIndex) {
         spans.add(TextSpan(
           text: text.substring(lastIndex, match.start),
           style: TextStyle(
-            fontSize: 13.5,
-            height: 1.55,
-            color: isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+            fontSize: fontSize,
+            fontWeight: fontWeight,
+            height: height,
+            color: defaultColor,
           ),
         ));
       }
 
-      final rawMatched = match.group(1) ?? '';
-      final cleanCode = rawMatched.startsWith('`') && rawMatched.endsWith('`')
-          ? rawMatched.substring(1, rawMatched.length - 1)
-          : rawMatched;
+      final raw = match.group(0) ?? '';
 
-      spans.add(WidgetSpan(
-        alignment: PlaceholderAlignment.middle,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-          decoration: BoxDecoration(
-            color: isDark ? AppTokens.darkElevated : AppTokens.lightBorder,
-            borderRadius: AppTokens.borderRadiusXs,
-            border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
-          ),
-          child: Text(
-            cleanCode,
-            style: TextStyle(
-              fontSize: 12,
-              fontFamily: 'monospace',
-              color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8),
+      if (raw.startsWith('`') && raw.endsWith('`') && raw.length >= 2) {
+        final code = raw.substring(1, raw.length - 1);
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+            ),
+            child: Text(
+              code,
+              style: TextStyle(
+                fontSize: fontSize - 1,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.w500,
+                color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8),
+              ),
             ),
           ),
-        ),
-      ));
+        ));
+      } else if (raw.startsWith('**') && raw.endsWith('**') && raw.length >= 4) {
+        final boldContent = raw.substring(2, raw.length - 2).trim();
+        spans.add(TextSpan(
+          text: boldContent,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w700,
+            height: height,
+            color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+          ),
+        ));
+      } else if (raw.startsWith('*') && raw.endsWith('*') && raw.length >= 2) {
+        final italicContent = raw.substring(1, raw.length - 1).trim();
+        spans.add(TextSpan(
+          text: italicContent,
+          style: TextStyle(
+            fontSize: fontSize,
+            fontStyle: FontStyle.italic,
+            height: height,
+            color: defaultColor,
+          ),
+        ));
+      } else if (raw.startsWith('[') && raw.contains('](') && raw.endsWith(')')) {
+        final linkMatch = RegExp(r'\[([^\]]+)\]\(([^)]+)\)').firstMatch(raw);
+        if (linkMatch != null) {
+          final label = linkMatch.group(1) ?? '';
+          spans.add(TextSpan(
+            text: label,
+            style: TextStyle(
+              fontSize: fontSize,
+              fontWeight: FontWeight.w600,
+              color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+              decoration: TextDecoration.underline,
+            ),
+          ));
+        }
+      } else {
+        // File path badge
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.middle,
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 2),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1.5),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(4),
+              border: Border.all(color: isDark ? const Color(0xFF334155) : const Color(0xFFCBD5E1)),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.insert_drive_file_outlined,
+                  size: 11,
+                  color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF64748B),
+                ),
+                const SizedBox(width: 3),
+                Text(
+                  raw,
+                  style: TextStyle(
+                    fontSize: fontSize - 1.5,
+                    fontFamily: 'monospace',
+                    color: isDark ? const Color(0xFF93C5FD) : const Color(0xFF1D4ED8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ));
+      }
 
       lastIndex = match.end;
     }
@@ -1190,17 +1442,457 @@ class _MarkdownParagraph extends StatelessWidget {
       spans.add(TextSpan(
         text: text.substring(lastIndex),
         style: TextStyle(
-          fontSize: 13.5,
-          height: 1.55,
-          color: isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+          fontSize: fontSize,
+          fontWeight: fontWeight,
+          height: height,
+          color: defaultColor,
         ),
       ));
     }
 
+    return SelectableText.rich(
+      TextSpan(children: spans),
+    );
+  }
+}
+
+// --- Heading 1 (Large Title) ---
+class _Heading1View extends StatelessWidget {
+  final String text;
+  final bool isDark;
+
+  const _Heading1View({required this.text, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppTokens.space20, bottom: AppTokens.space10),
+      padding: const EdgeInsets.only(bottom: AppTokens.space8),
+      decoration: BoxDecoration(
+        border: Border(
+          bottom: BorderSide(
+            color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+            width: 1.5,
+          ),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(5),
+            margin: const EdgeInsets.only(right: 10),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9),
+              borderRadius: BorderRadius.circular(6),
+            ),
+            child: Icon(
+              Icons.auto_awesome,
+              size: 16,
+              color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+            ),
+          ),
+          Expanded(
+            child: _InlineMarkdownText(
+              text: text,
+              isDark: isDark,
+              fontSize: 18,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Heading 2 (Section Title with Indicator) ---
+class _Heading2View extends StatelessWidget {
+  final String text;
+  final bool isDark;
+
+  const _Heading2View({required this.text, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppTokens.space16, bottom: AppTokens.space8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Container(
+            width: 3.5,
+            height: 18,
+            margin: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+              borderRadius: BorderRadius.circular(2),
+            ),
+          ),
+          Expanded(
+            child: _InlineMarkdownText(
+              text: text,
+              isDark: isDark,
+              fontSize: 15.5,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// --- Heading 3 (Subsection Title) ---
+class _Heading3View extends StatelessWidget {
+  final String text;
+  final bool isDark;
+
+  const _Heading3View({required this.text, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(top: AppTokens.space12, bottom: AppTokens.space6),
+      child: _InlineMarkdownText(
+        text: text,
+        isDark: isDark,
+        fontSize: 14,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+}
+
+// --- Clean Divider ---
+class _DividerView extends StatelessWidget {
+  final bool isDark;
+
+  const _DividerView({required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: AppTokens.space10),
-      child: Text.rich(
-        TextSpan(children: spans),
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.space12),
+      child: Divider(
+        height: 1,
+        thickness: 1,
+        color: isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0),
+      ),
+    );
+  }
+}
+
+// --- Structured Markdown Data Table ---
+class _MarkdownTableView extends StatelessWidget {
+  final List<String> headers;
+  final List<List<String>> rows;
+  final bool isDark;
+
+  const _MarkdownTableView({
+    required this.headers,
+    required this.rows,
+    required this.isDark,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (headers.isEmpty && rows.isEmpty) return const SizedBox.shrink();
+
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final headerBg = isDark ? const Color(0xFF1E293B) : const Color(0xFFF1F5F9);
+    final tableBg = isDark ? const Color(0xFF0F172A) : Colors.white;
+    final zebraBg = isDark ? const Color(0xFF151E2E) : const Color(0xFFF8FAFC);
+
+    final columnCount = headers.isNotEmpty
+        ? headers.length
+        : (rows.isNotEmpty ? rows.first.length : 0);
+
+    double getColWidth(int idx) {
+      if (idx >= headers.length) {
+        if (idx == 0) return 50;
+        return 220;
+      }
+      final name = headers[idx].toLowerCase().trim();
+      if (name == '#' || name == 'id') return 50;
+      if (name == 'ice' || name == 'score' || name == 'effort') return 75;
+      if (name.contains('file') || name == 'ticket' || name == 'owner') return 180;
+      if (name == 'issue' || name == 'initiative') return 260;
+      if (name == 'fix' || name == 'verification' || name == 'dependencies') return 300;
+      return 200;
+    }
+
+    final totalColWidth = List.generate(columnCount, (i) => getColWidth(i)).fold(0.0, (a, b) => a + b);
+    final totalTableWidth = totalColWidth + 28.0;
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: AppTokens.space12),
+      decoration: BoxDecoration(
+        color: tableBg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor, width: 1),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(isDark ? 0.2 : 0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final hasBoundedWidth = constraints.hasBoundedWidth && constraints.maxWidth > 0 && constraints.maxWidth.isFinite;
+          final double effectiveWidth = (hasBoundedWidth && constraints.maxWidth > totalTableWidth)
+              ? constraints.maxWidth
+              : totalTableWidth;
+          final double scale = (hasBoundedWidth && constraints.maxWidth > totalTableWidth && totalColWidth > 0)
+              ? (constraints.maxWidth - 28.0) / totalColWidth
+              : 1.0;
+
+          return SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: effectiveWidth,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (headers.isNotEmpty) ...[
+                    Container(
+                      color: headerBg,
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      child: Row(
+                        children: headers.asMap().entries.map((entry) {
+                          final idx = entry.key;
+                          final headerText = entry.value;
+
+                          return Container(
+                            width: getColWidth(idx) * scale,
+                            padding: const EdgeInsets.only(right: 12),
+                            child: Text(
+                              headerText.toUpperCase(),
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.6,
+                                color: isDark ? const Color(0xFF94A3B8) : const Color(0xFF475569),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                    Divider(height: 1, thickness: 1, color: borderColor),
+                  ],
+                  ...rows.asMap().entries.map((rowEntry) {
+                    final rowIdx = rowEntry.key;
+                    final row = rowEntry.value;
+                    final isZebra = rowIdx % 2 == 1;
+
+                    return Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                      decoration: BoxDecoration(
+                        color: isZebra ? zebraBg : tableBg,
+                        border: Border(
+                          bottom: rowIdx < rows.length - 1
+                              ? BorderSide(color: borderColor.withOpacity(0.5), width: 1)
+                              : BorderSide.none,
+                        ),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: List.generate(columnCount, (colIdx) {
+                          final cellText = colIdx < row.length ? row[colIdx] : '';
+
+                          return Container(
+                            width: getColWidth(colIdx) * scale,
+                            padding: const EdgeInsets.only(right: 12),
+                            child: _InlineMarkdownText(
+                              text: cellText,
+                              isDark: isDark,
+                              fontSize: 12.5,
+                            ),
+                          );
+                        }),
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+// --- Bullet List with Custom Dots ---
+class _BulletListView extends StatelessWidget {
+  final List<String> items;
+  final bool isDark;
+
+  const _BulletListView({required this.items, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.space4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: items.map((item) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppTokens.space6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 7, right: 10),
+                  width: 5,
+                  height: 5,
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                Expanded(
+                  child: _InlineMarkdownText(text: item, isDark: isDark),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// --- Numbered List with Custom Badges ---
+class _OrderedListView extends StatelessWidget {
+  final List<String> items;
+  final bool isDark;
+
+  const _OrderedListView({required this.items, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: AppTokens.space4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: items.asMap().entries.map((entry) {
+          final idx = entry.key;
+          final item = entry.value;
+
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppTokens.space6),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 2, right: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: isDark ? const Color(0xFF1E293B) : const Color(0xFFE2E8F0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    '${idx + 1}',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      fontFamily: 'monospace',
+                      color: isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7),
+                    ),
+                  ),
+                ),
+                Expanded(
+                  child: _InlineMarkdownText(text: item, isDark: isDark),
+                ),
+              ],
+            ),
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+// --- Callout Box / Action Proposal Box ---
+class _CalloutBoxView extends StatelessWidget {
+  final String text;
+  final bool isDark;
+  final String? title;
+  final IconData? icon;
+
+  const _CalloutBoxView({
+    required this.text,
+    required this.isDark,
+    this.title,
+    this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accentColor = isDark ? const Color(0xFF38BDF8) : const Color(0xFF0284C7);
+    final borderColor = isDark ? const Color(0xFF334155) : const Color(0xFFE2E8F0);
+    final bgColor = isDark ? const Color(0xFF1E2433) : const Color(0xFFF8FAFC);
+
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: AppTokens.space10),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: borderColor),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned(
+            left: 0,
+            top: 0,
+            bottom: 0,
+            child: Container(
+              width: 4,
+              color: accentColor,
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(
+              left: 18,
+              top: 14,
+              right: 14,
+              bottom: 14,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (title != null) ...[
+                  Row(
+                    children: [
+                      Icon(
+                        icon ?? Icons.help_outline_rounded,
+                        size: 16,
+                        color: accentColor,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        title!,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? const Color(0xFFF8FAFC) : const Color(0xFF0F172A),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                ],
+                _InlineMarkdownText(text: text, isDark: isDark),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

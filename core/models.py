@@ -292,6 +292,17 @@ class WorkerOutput:
     error_message: Optional[str] = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
+    @property
+    def status(self) -> str:
+        return "COMPLETED" if self.success else "FAILED"
+
+    @property
+    def result(self) -> dict[str, Any]:
+        res = dict(self.metadata)
+        if "crawler_report" in self.metadata:
+            res["report"] = self.metadata["crawler_report"]
+        return res
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "success": self.success,

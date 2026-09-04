@@ -229,34 +229,40 @@ class _ChatInputBarState extends State<ChatInputBar> {
                   ],
                 ),
                 const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: AppTokens.space8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTokens.darkSurface : AppTokens.lightBorder,
-                    borderRadius: AppTokens.borderRadiusXs,
-                    border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 6,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: activeProv != null ? AppTokens.success : AppTokens.warning,
-                          shape: BoxShape.circle,
+                Flexible(
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: AppTokens.space8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTokens.darkSurface : AppTokens.lightBorder,
+                      borderRadius: AppTokens.borderRadiusXs,
+                      border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            color: activeProv != null ? AppTokens.success : AppTokens.warning,
+                            shape: BoxShape.circle,
+                          ),
                         ),
-                      ),
-                      const SizedBox(width: AppTokens.space6),
-                      Text(
-                        activeProv != null ? '$provName ($modelName)' : 'No Provider Configured',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontFamily: 'monospace',
-                          color: isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary,
+                        const SizedBox(width: AppTokens.space6),
+                        Flexible(
+                          child: Text(
+                            activeProv != null ? '$provName ($modelName)' : 'No Provider Configured',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary,
+                            ),
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
                 const SizedBox(width: AppTokens.space8),

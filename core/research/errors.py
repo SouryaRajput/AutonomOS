@@ -136,3 +136,126 @@ class SearchConfigurationError(SearchError):
     """Raised when search provider configuration is invalid or missing required attributes."""
     def __init__(self, message: str, details: Optional[dict] = None):
         super().__init__(message, details)
+
+
+# Fetch-specific Errors
+class FetchError(ResearchError):
+    """Base exception for web fetch errors."""
+    pass
+
+
+class FetchParameterValidationError(FetchError):
+    """Raised when fetch parameters fail validation (empty URL, unsupported scheme, etc.)."""
+    def __init__(self, parameter: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid fetch parameter '{parameter}': {reason}"
+        d = {"parameter": parameter, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.parameter = parameter
+        self.reason = reason
+
+
+class FetchSecurityError(FetchError):
+    """Raised when a fetch target violates SSRF or network policy."""
+    def __init__(self, target: str, reason: str, details: Optional[dict] = None):
+        msg = f"Fetch security violation for target '{target}': {reason}"
+        d = {"target": target, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.target = target
+        self.reason = reason
+
+
+class FetchTimeoutError(FetchError):
+    """Raised when an HTTP fetch times out."""
+    def __init__(self, url: str, timeout_seconds: float, details: Optional[dict] = None):
+        msg = f"Fetch request to '{url}' timed out after {timeout_seconds}s"
+        d = {"url": url, "timeout_seconds": timeout_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+        self.timeout_seconds = timeout_seconds
+
+
+class FetchHttpError(FetchError):
+    """Raised when an HTTP request returns an error status code (4xx, 5xx)."""
+    def __init__(self, url: str, status_code: int, message: str = "", headers: Optional[dict] = None, details: Optional[dict] = None):
+        msg = f"HTTP {status_code} fetching '{url}'"
+        if message:
+            msg += f": {message}"
+        d = {"url": url, "status_code": status_code, "headers": headers or {}}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+        self.status_code = status_code
+        self.headers = headers or {}
+
+
+class FetchNetworkError(FetchError):
+    """Raised on low-level transport errors (DNS, connection reset, SSL)."""
+    def __init__(self, url: str, message: str, details: Optional[dict] = None):
+        msg = f"Network error fetching '{url}': {message}"
+        d = {"url": url, "network_error": message}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+
+
+class FetchContentExtractionError(FetchError):
+    """Raised when content extraction fails."""
+    def __init__(self, url: str, reason: str, details: Optional[dict] = None):
+        msg = f"Content extraction failed for '{url}': {reason}"
+        d = {"url": url, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+        self.reason = reason
+
+
+class FetchRedirectError(FetchError):
+    """Base exception for redirect failures."""
+    def __init__(self, url: str, reason: str, details: Optional[dict] = None):
+        msg = f"Redirect failure for '{url}': {reason}"
+        d = {"url": url, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+        self.reason = reason
+
+
+class FetchRedirectLimitError(FetchRedirectError):
+    """Raised when redirect loop is detected or redirect count exceeds threshold."""
+    def __init__(self, url: str, redirect_count: int, max_redirects: int, is_loop: bool = False, details: Optional[dict] = None):
+        if is_loop:
+            msg = f"Redirect loop detected at '{url}'"
+        else:
+            msg = f"Redirect limit exceeded ({redirect_count} > {max_redirects}) starting from '{url}'"
+        d = {"url": url, "redirect_count": redirect_count, "max_redirects": max_redirects, "is_loop": is_loop}
+        if details:
+            d.update(details)
+        super().__init__(url, msg, details=d)
+        self.redirect_count = redirect_count
+        self.max_redirects = max_redirects
+        self.is_loop = is_loop
+
+
+class FetchSizeLimitError(FetchError):
+    """Raised when response body or stream exceeds maximum permitted bytes."""
+    def __init__(self, url: str, size_bytes: int, max_bytes: int, details: Optional[dict] = None):
+        msg = f"Response size for '{url}' ({size_bytes} bytes) exceeds maximum limit of {max_bytes} bytes"
+        d = {"url": url, "size_bytes": size_bytes, "max_bytes": max_bytes}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.url = url
+        self.size_bytes = size_bytes
+        self.max_bytes = max_bytes
+
+

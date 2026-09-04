@@ -90,7 +90,8 @@ class _WorkspaceExplorerViewState extends State<WorkspaceExplorerView> with Sing
     final activePath = widget.appState.activeWorkingPath;
     final totalFiles = _status?['total_files'] ?? 0;
     final isInit = _status?['is_initialized'] ?? false;
-    final techStack = _status?['tech_stack'] as Map<String, dynamic>? ?? {};
+    final rawTechStack = _status?['tech_stack'];
+    final techStack = rawTechStack is Map ? Map<String, dynamic>.from(rawTechStack) : <String, dynamic>{};
     final languages = (techStack['languages'] as List?)?.join(', ') ?? 'Auto-detected';
     final frameworks = (techStack['frameworks'] as List?)?.join(', ') ?? '';
 

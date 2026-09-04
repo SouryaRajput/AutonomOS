@@ -25,6 +25,24 @@ SENSITIVE_HEADER_KEYS = {
     "set-cookie",
     "proxy-authorization",
     "x-auth-token",
+    "session-id",
+    "x-session-id",
+    "token",
+}
+
+SENSITIVE_QUERY_PARAMS = {
+    "key",
+    "api_key",
+    "apikey",
+    "token",
+    "access_token",
+    "secret",
+    "password",
+    "pass",
+    "pwd",
+    "auth",
+    "session_token",
+    "sessionid",
 }
 
 LOCALHOST_HOSTNAMES = {
@@ -34,14 +52,27 @@ LOCALHOST_HOSTNAMES = {
     "ip6-loopback",
 }
 
+BLOCKED_DOMAIN_SUFFIXES = (
+    ".internal",
+    ".local",
+    ".localhost",
+    ".lan",
+    ".home",
+    ".corp",
+    ".intranet",
+    ".arpa",
+)
+
 METADATA_HOSTNAMES = {
     "instance-data",
     "metadata.google.internal",
     "169.254.169.254",
+    "metadata",
 }
 
 CLOUD_METADATA_IPS = {
     ipaddress.ip_address("169.254.169.254"),
+    ipaddress.ip_address("fd00:ec2::254"),
 }
 
 # Regex to find user:pass@ in URLs
@@ -50,11 +81,36 @@ _URL_CREDENTIAL_REGEX = re.compile(r"://([^/@:]+):([^/@:]+)@")
 
 def sanitize_url(url: str) -> str:
     """
-    Strip embedded credentials (user:pass@) from a URL string for safe logging and storage.
+    Strip embedded credentials (user:pass@) and sensitive query parameter values
+    from a URL string for safe logging and storage.
     """
     if not url or not isinstance(url, str):
         return ""
-    return _URL_CREDENTIAL_REGEX.sub(r"://\1:[REDACTED]@", url)
+
+    sanitized = _URL_CREDENTIAL_REGEX.sub(r"://\1:[REDACTED]@", url.strip())
+
+    try:
+        parsed = urllib.parse.urlsplit(sanitized)
+        if parsed.query:
+            query_pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
+            new_pairs = []
+            for k, v in query_pairs:
+                if k.lower().strip() in SENSITIVE_QUERY_PARAMS:
+                    new_pairs.append((k, REDACTED_STR))
+                else:
+                    new_pairs.append((k, v))
+            new_query = urllib.parse.urlencode(new_pairs)
+            sanitized = urllib.parse.urlunsplit((
+                parsed.scheme,
+                parsed.netloc,
+                parsed.path,
+                new_query,
+                parsed.fragment,
+            ))
+    except Exception:
+        pass
+
+    return sanitized
 
 
 def sanitize_headers(headers: dict[str, str]) -> dict[str, str]:
@@ -101,7 +157,7 @@ def sanitize_error(error: Exception | str, secrets: Optional[list[str]] = None) 
 def validate_network_target(url_or_host: str, allow_localhost: bool = False) -> None:
     """
     Validate that an outbound network target (URL or hostname) does not violate the
-    network security boundary (SSRF, private subnets, loopback, cloud metadata endpoints).
+    network security boundary (SSRF, private subnets, loopback, cloud metadata endpoints, internal domains).
     
     Raises SearchSecurityError if the destination is disallowed.
     """
@@ -136,20 +192,38 @@ def validate_network_target(url_or_host: str, allow_localhost: bool = False) -> 
     if hostname_clean in METADATA_HOSTNAMES:
         raise SearchSecurityError(raw, f"Target host '{hostname_clean}' is a restricted Cloud Metadata endpoint.")
 
-    # 3. Check loopback / localhost
+    # 3. Check internal domain suffixes
+    if not allow_localhost:
+        if any(hostname_clean.endswith(suffix) for suffix in BLOCKED_DOMAIN_SUFFIXES):
+            raise SearchSecurityError(raw, f"Target host '{hostname_clean}' uses a restricted internal domain suffix.")
+
+    # 4. Check loopback / localhost
     if not allow_localhost and hostname_clean in LOCALHOST_HOSTNAMES:
         raise SearchSecurityError(raw, f"Target host '{hostname_clean}' is a local loopback address (SSRF protection).")
 
-    # 4. Check IP address bounds
+    # 5. Check IP address bounds (including numeric IP representations)
+    ip_obj: Optional[ipaddress.IPv4Address | ipaddress.IPv6Address] = None
     try:
         ip_obj = ipaddress.ip_address(hostname_clean)
-        
+    except ValueError:
+        # Check integer IP representation (e.g. 2130706433 = 127.0.0.1)
+        if hostname_clean.isdigit():
+            try:
+                ip_obj = ipaddress.IPv4Address(int(hostname_clean))
+            except ValueError:
+                pass
+
+    if ip_obj is not None:
+        # Check IPv4-mapped IPv6 addresses (e.g. ::ffff:127.0.0.1)
+        if isinstance(ip_obj, ipaddress.IPv6Address) and ip_obj.ipv4_mapped:
+            ip_obj = ip_obj.ipv4_mapped
+
         # Check cloud metadata endpoint
-        if ip_obj in CLOUD_METADATA_IPS:
+        if ip_obj in CLOUD_METADATA_IPS or ip_obj == ipaddress.ip_address("169.254.169.254"):
             raise SearchSecurityError(raw, f"Target IP '{ip_obj}' is a restricted Cloud Metadata service endpoint.")
 
         # Check loopback
-        if not allow_localhost and ip_obj.is_loopback:
+        if not allow_localhost and (ip_obj.is_loopback or ip_obj == ipaddress.ip_address("0.0.0.0")):
             raise SearchSecurityError(raw, f"Target IP '{ip_obj}' is a loopback address (SSRF protection).")
 
         # Check private RFC 1918 / RFC 4193
@@ -163,10 +237,6 @@ def validate_network_target(url_or_host: str, allow_localhost: bool = False) -> 
             raise SearchSecurityError(raw, f"Target IP '{ip_obj}' is a multicast address.")
         if ip_obj.is_reserved:
             raise SearchSecurityError(raw, f"Target IP '{ip_obj}' is an IETF reserved address.")
-
-    except ValueError:
-        # Not a raw IP literal
-        pass
 
 
 def is_safe_search_url(url: str, allow_localhost: bool = False) -> bool:
