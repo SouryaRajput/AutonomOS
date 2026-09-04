@@ -48,6 +48,7 @@ class TestFetchProvider(FetchProvider):
         redirect_chain: Optional[list[str]] = None,
         body_bytes: Optional[bytes] = None,
         content_encoding: Optional[str] = None,
+        error: Optional[Exception] = None,
     ) -> None:
         """Register a canned URL response fixture."""
         raw_headers = dict(headers or {"Content-Type": content_type, "Server": "test-fetch/1.0"})
@@ -63,6 +64,7 @@ class TestFetchProvider(FetchProvider):
             "final_url": final_url or url.strip(),
             "redirect_chain": redirect_chain or [],
             "content_encoding": content_encoding,
+            "error": error,
         }
 
     def simulate_failure(self, error: Exception) -> None:
@@ -132,6 +134,14 @@ class TestFetchProvider(FetchProvider):
         target = params.url.strip()
         if target in self._fixtures:
             data = self._fixtures[target]
+            if data.get("error") is not None:
+                err = data["error"]
+                if isinstance(err, FetchHttpError):
+                    err.url = params.url
+                elif isinstance(err, (FetchTimeoutError, FetchNetworkError, FetchRedirectLimitError, FetchSizeLimitError, FetchError)):
+                    err.url = params.url
+                raise err
+
             status_code = int(data["status_code"])
 
             # Check if status_code is HTTP error

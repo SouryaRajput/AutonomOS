@@ -10,6 +10,104 @@ import '../services/inference_service.dart';
 import '../services/local_workspace_auditor.dart';
 import 'app_state.dart';
 
+enum UserIntent {
+  proceedWithPlan,
+  simpleQuestion,
+  codeImplementation,
+  complexResearch,
+}
+
+UserIntent classifyUserIntent({
+  required String prompt,
+  required String? lastAssistantMessage,
+  required List<ChatMessage> conversationMessages,
+}) {
+  final clean = prompt.trim();
+  final lower = clean.toLowerCase();
+
+  // 1. Check if the previous assistant message asked to proceed with plan or proposed a roadmap
+  final lastAssistant = (lastAssistantMessage ?? '').toLowerCase();
+  final hasPendingPlanProposal = lastAssistant.contains('proceed with') ||
+      lastAssistant.contains('implementation plan') ||
+      lastAssistant.contains('would you like me to proceed') ||
+      lastAssistant.contains('reply "proceed') ||
+      lastAssistant.contains('reply \'proceed') ||
+      lastAssistant.contains('phase a') ||
+      lastAssistant.contains('quick wins') ||
+      lastAssistant.contains('ready to proceed');
+
+  final isProceedAffirmative = lower == 'proceed' ||
+      lower.startsWith('proceed') ||
+      lower == 'yes' ||
+      lower == 'yeah' ||
+      lower == 'yep' ||
+      lower == 'sure' ||
+      lower == 'go ahead' ||
+      lower == 'ok' ||
+      lower == 'okay' ||
+      lower == 'approve' ||
+      lower == 'approved' ||
+      lower.startsWith('start phase') ||
+      lower.contains('create the implementation plan') ||
+      lower.contains('create implementation plan') ||
+      lower.contains('generate the plan') ||
+      lower.contains('generate implementation plan') ||
+      lower.contains('let\'s do it') ||
+      lower.contains('let\'s proceed') ||
+      lower.contains('go for it');
+
+  if (hasPendingPlanProposal && isProceedAffirmative) {
+    return UserIntent.proceedWithPlan;
+  }
+
+  // Explicit user command to create / proceed with implementation plan
+  if (lower.startsWith('proceed with') ||
+      (lower.contains('proceed') && lower.contains('plan')) ||
+      (lower.contains('create') && lower.contains('implementation plan'))) {
+    return UserIntent.proceedWithPlan;
+  }
+
+  // 2. Direct simple questions, status checks, greetings, or acknowledgments
+  final isGreetingOrThanks = RegExp(
+    r'^(hi|hello|hey|greetings|thanks|thank you|good morning|good evening|cool|nice|got it)[\s!.]*$',
+    caseSensitive: false,
+  ).hasMatch(clean);
+
+  final isStatusCheck = RegExp(
+    r'^(status|what is running|active tasks|active workers|progress|how are you|who are you)[\s?!.]*$',
+    caseSensitive: false,
+  ).hasMatch(clean);
+
+  final isSimpleQuestion = (clean.endsWith('?') ||
+      RegExp(r'^(what|where|how do i|how can i|why|who|when|which|is there|are there|can you explain|tell me about|do we have|list all|show me)\b', caseSensitive: false).hasMatch(clean)) &&
+      !lower.contains('research') &&
+      !lower.contains('investigate') &&
+      !lower.contains('audit') &&
+      !lower.contains('analyze') &&
+      !lower.contains('deep dive') &&
+      !lower.contains('benchmark') &&
+      clean.split(RegExp(r'\s+')).length <= 25;
+
+  if (isGreetingOrThanks || isStatusCheck || isSimpleQuestion) {
+    return UserIntent.simpleQuestion;
+  }
+
+  // 3. Direct Code Modification / Creation
+  final isCodeImperative = RegExp(
+    r'\b(create file|edit file|write code|modify|fix bug|refactor|add component|build component|implement function|fix error|update file|add route)\b',
+    caseSensitive: false,
+  ).hasMatch(clean) &&
+      !lower.contains('research') &&
+      !lower.contains('audit');
+
+  if (isCodeImperative) {
+    return UserIntent.codeImplementation;
+  }
+
+  // 4. Default to complex research / analysis
+  return UserIntent.complexResearch;
+}
+
 class ChatController extends ChangeNotifier {
   final ConversationRepository repository;
   final String projectId;
@@ -142,77 +240,9 @@ class ChatController extends ChangeNotifier {
       );
     }
 
-    final userMsg = ChatMessage(
-      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
-      conversationId: _conversation!.id,
-      messageType: MessageType.userMessage,
-      content: cleanPrompt,
-      sender: 'user',
-      timestamp: DateTime.now().toIso8601String(),
-    );
+    final previousMessages = List<ChatMessage>.from(_conversation!.messages);
 
-    // 1. Optimistically append user message and synchronize state
-    final currentMsgs = List<ChatMessage>.from(_conversation!.messages)..add(userMsg);
-    _conversation = ChatConversation(
-      id: _conversation!.id,
-      projectId: _conversation!.projectId,
-      title: _conversation!.title,
-      messages: currentMsgs,
-      createdAt: _conversation!.createdAt,
-      updatedAt: DateTime.now().toIso8601String(),
-      isActive: _conversation!.isActive,
-    );
-    appState?.updateConversation(_conversation!);
-
-    _isSending = true;
-    _errorMessage = null;
-
-    final isResearch = cleanPrompt.toLowerCase().contains('research') ||
-        cleanPrompt.toLowerCase().contains('ux') ||
-        cleanPrompt.toLowerCase().contains('improve') ||
-        cleanPrompt.toLowerCase().contains('explore') ||
-        cleanPrompt.toLowerCase().contains('how to') ||
-        cleanPrompt.toLowerCase().contains('compare');
-
-    final workerRole = isResearch ? 'Researcher' : 'Manager';
-    final startNow = DateTime.now().toIso8601String();
-
-    _currentActivityTitle = isResearch ? 'Researching workspace & UX opportunities…' : 'Exploring workspace…';
-    _currentActivitySubtitle = 'Reading project structure and relevant files';
-
-    _currentActivity = ExecutionActivity(
-      activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
-      projectId: projectId,
-      correlationId: _conversation!.id,
-      workerId: isResearch ? 'worker.researcher' : 'worker.manager',
-      workerType: workerRole,
-      title: isResearch ? 'Researcher — Running' : 'Manager — Active',
-      status: ActivityStatus.running,
-      startTime: startNow,
-      currentAction: isResearch
-          ? 'Inspecting workspace & analyzing UX opportunities…'
-          : 'Exploring workspace and reading configuration…',
-      isLive: true,
-      commands: const [
-        CommandLineItem(command: 'git status --short', isRunning: false, exitCode: 0),
-      ],
-    );
-    notifyListeners();
-
-    // 2. Prepare clean message history strictly from this conversation's messages
-    final history = <Map<String, String>>[];
-    for (final m in _conversation!.messages) {
-      if (m.content.startsWith('⚠️')) continue; // Ignore error/warning alerts
-      if (m.content.trim().isEmpty) continue;
-      if (m.messageType == MessageType.userMessage) {
-        history.add({'role': 'user', 'content': m.content.trim()});
-      } else if (m.messageType == MessageType.managerMessage) {
-        history.add({'role': 'assistant', 'content': m.content.trim()});
-      }
-    }
-    final cleanHistory = history.length > 10 ? history.sublist(history.length - 10) : history;
-
-    // 3. Determine active provider (Uses ONLY the selected provider)
+    // 1. Determine active provider (Uses ONLY the selected provider)
     final activeProv = appState?.activeProvider;
     if (activeProv == null) {
       final now = DateTime.now().toIso8601String();
@@ -225,7 +255,7 @@ class ChatController extends ChangeNotifier {
         sender: 'Manager',
         timestamp: now,
       );
-      final updatedList = List<ChatMessage>.from(_conversation!.messages)..add(noProvMsg);
+      final updatedList = List<ChatMessage>.from(previousMessages)..add(noProvMsg);
       _conversation = ChatConversation(
         id: _conversation!.id,
         projectId: _conversation!.projectId,
@@ -244,7 +274,58 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
+    final userMsg = ChatMessage(
+      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      conversationId: _conversation!.id,
+      messageType: MessageType.userMessage,
+      content: cleanPrompt,
+      sender: 'user',
+      timestamp: DateTime.now().toIso8601String(),
+    );
+
+    // Optimistically append user message and synchronize state
+    final currentMsgs = List<ChatMessage>.from(previousMessages)..add(userMsg);
+    _conversation = ChatConversation(
+      id: _conversation!.id,
+      projectId: _conversation!.projectId,
+      title: _conversation!.title,
+      messages: currentMsgs,
+      createdAt: _conversation!.createdAt,
+      updatedAt: DateTime.now().toIso8601String(),
+      isActive: _conversation!.isActive,
+    );
+    appState?.updateConversation(_conversation!);
+
+    _isSending = true;
+    _errorMessage = null;
+
+    // 2. Extract conversation memory and previous context
+    final history = <Map<String, String>>[];
+    String? lastAssistantMessage;
+
+    for (final m in previousMessages) {
+      if (m.content.startsWith('⚠️')) continue;
+      if (m.content.trim().isEmpty) continue;
+      if (m.messageType == MessageType.userMessage) {
+        history.add({'role': 'user', 'content': m.content.trim()});
+      } else if (m.messageType == MessageType.managerMessage) {
+        history.add({'role': 'assistant', 'content': m.content.trim()});
+        lastAssistantMessage = m.content.trim();
+      }
+    }
+    final cleanHistory = history.length > 10 ? history.sublist(history.length - 10) : history;
+
+    // 3. Classify user intent dynamically with memory context
+    final intent = classifyUserIntent(
+      prompt: cleanPrompt,
+      lastAssistantMessage: lastAssistantMessage,
+      conversationMessages: previousMessages,
+    );
+
+    final startNow = DateTime.now().toIso8601String();
     String finalContent = '';
+    List<String> finalCompletedActions = [];
+    List<WorkerActivityItem> finalWorkers = [];
 
     try {
       final activePath = appState?.activeWorkingPath ?? '';
@@ -276,12 +357,13 @@ class ChatController extends ChangeNotifier {
             }
           }
 
-          // Sample key configuration and source files
           final keyFileNames = [
             'package.json',
             'pubspec.yaml',
             'requirements.txt',
             'README.md',
+            'next.config.js',
+            'next.config.mjs',
             'src/App.tsx',
             'src/App.jsx',
             'src/app/page.tsx',
@@ -302,194 +384,504 @@ class ChatController extends ChangeNotifier {
         } catch (_) {}
       }
 
-      // -------------------------------------------------------------
-      // PHASE 1: MANAGER ANALYSIS & TASK DELEGATION
-      // -------------------------------------------------------------
-      _currentActivityTitle = 'Manager: Planning & Delegating…';
-      _currentActivitySubtitle = 'Analyzing workspace structure & formulating research brief';
-      _currentActivity = ExecutionActivity(
-        activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
-        projectId: projectId,
-        correlationId: _conversation!.id,
-        workerId: 'worker.manager',
-        workerType: 'Manager',
-        title: 'Manager — Formulating Plan',
-        status: ActivityStatus.running,
-        startTime: startNow,
-        currentAction: 'Decomposing request & formulating research brief for Researcher…',
-        completedActions: [
-          '✓ Inspected workspace structure',
-          if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
-          if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
-        ],
-        filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
-        workers: const [
-          WorkerActivityItem(
+      switch (intent) {
+        case UserIntent.proceedWithPlan:
+          // -------------------------------------------------------------
+          // INTENT: PROCEED WITH IMPLEMENTATION PLAN (NO RE-RESEARCH)
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Formulating Implementation Plan…';
+          _currentActivitySubtitle = 'Generating sprint tickets, acceptance criteria & QA test matrix';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
             workerId: 'worker.manager',
-            name: 'Manager',
-            role: 'Executive Orchestrator',
-            status: 'RUNNING',
-            currentAction: 'Formulating execution plan & delegating research brief',
-          ),
-          WorkerActivityItem(
-            workerId: 'worker.researcher',
-            name: 'Researcher',
-            role: 'Specialist',
-            status: 'WAITING',
-            currentAction: 'Standing by for Manager delegation brief',
-          ),
-        ],
-        isLive: true,
-      );
-      notifyListeners();
+            workerType: 'Manager',
+            title: 'Manager — Formulating Plan',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Decomposing research findings into engineering tickets & QA matrix…',
+            completedActions: [
+              '✓ Research findings retrieved from conversation memory',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Formulating tickets & delegating implementation tasks',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'RUNNING',
+                currentAction: 'Preparing code modifications from technical specs',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.qa',
+                name: 'QA Tester',
+                role: 'Quality Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for test matrix & verification criteria',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Research phase completed',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
 
-      final managerPlanResult = await _inferenceService.generateManagerPlan(
-        baseUrl: activeProv['baseUrl'] as String? ?? '',
-        apiKey: activeProv['apiKey'] as String? ?? '',
-        model: activeProv['model'] as String? ?? '',
-        userPrompt: cleanPrompt,
-        activeWorkingPath: activePath,
-        projectName: projectName,
-        scannedFiles: scannedFiles,
-        keyFilePreviews: keyFilePreviews,
-      );
+          final planResult = await _inferenceService.generateImplementationPlan(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            previousResearchOrContext: lastAssistantMessage ?? '',
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
 
-      final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
+          final rawAiResponse = (planResult['content'] as String? ?? '').trim();
+          final promptTokens = planResult['promptTokens'] as int? ?? 0;
+          final completionTokens = planResult['completionTokens'] as int? ?? 0;
+          if (promptTokens > 0 || completionTokens > 0) {
+            appState?.recordTokenUsage(promptTokens, completionTokens);
+          }
 
-      final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
+          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
+          if (finalContent.isEmpty) {
+            finalContent = rawAiResponse;
+          }
 
-      // -------------------------------------------------------------
-      // PHASE 2: RESEARCHER SPECIALIST EXECUTION
-      // -------------------------------------------------------------
-      _currentActivityTitle = 'Researcher: Investigating Codebase…';
-      _currentActivitySubtitle = 'Evaluating UI/UX patterns & component architecture';
-      _currentActivity = ExecutionActivity(
-        activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
-        projectId: projectId,
-        correlationId: _conversation!.id,
-        workerId: 'worker.researcher',
-        workerType: 'Researcher',
-        title: 'Researcher — Investigating',
-        status: ActivityStatus.running,
-        startTime: startNow,
-        currentAction: 'Analyzing component hierarchy & UX improvement opportunities…',
-        completedActions: [
-          '✓ Inspected workspace structure',
-          if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
-          if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
-          '✓ Manager formulated execution plan & delegated task to Researcher',
-        ],
-        filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
-        workers: const [
-          WorkerActivityItem(
+          finalCompletedActions = [
+            '✓ Research findings retrieved from conversation memory',
+            '✓ Generated Linear/GitHub issue tickets with acceptance criteria',
+            '✓ Defined QA test matrix and verification criteria',
+            '✓ Prepared Programmer technical specifications',
+            '✓ Delegated execution tasks to Senior Programmer',
+          ];
+
+          finalWorkers = const [
+            WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Formulated implementation roadmap & delegated tasks',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.programmer',
+              name: 'Programmer',
+              role: 'Senior Engineer',
+              status: 'RUNNING',
+              currentAction: 'Assigned implementation tasks & technical specifications',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.qa',
+              name: 'QA Tester',
+              role: 'Quality Engineer',
+              status: 'WAITING',
+              currentAction: 'Standing by for code delivery to run QA matrix',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.researcher',
+              name: 'Researcher',
+              role: 'Specialist',
+              status: 'COMPLETED',
+              currentAction: 'Research phase completed',
+            ),
+          ];
+          break;
+
+        case UserIntent.simpleQuestion:
+          // -------------------------------------------------------------
+          // INTENT: DIRECT QUESTION / FAST Q&A
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Answering Query…';
+          _currentActivitySubtitle = 'Referencing workspace files & conversation context';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
             workerId: 'worker.manager',
-            name: 'Manager',
-            role: 'Executive Orchestrator',
-            status: 'WAITING',
-            currentAction: 'Awaiting Researcher findings dossier',
-          ),
-          WorkerActivityItem(
-            workerId: 'worker.researcher',
-            name: 'Researcher',
-            role: 'Specialist',
-            status: 'RUNNING',
-            currentAction: 'Conducting deep codebase investigation & UX evaluation',
-          ),
-        ],
-        isLive: true,
-      );
-      notifyListeners();
+            workerType: 'Manager',
+            title: 'Manager — Answering',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Answering query directly from workspace context…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              '✓ Conversation memory active',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Answering user query directly',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
 
-      final researcherResult = await _inferenceService.generateResearcherFindings(
-        baseUrl: activeProv['baseUrl'] as String? ?? '',
-        apiKey: activeProv['apiKey'] as String? ?? '',
-        model: activeProv['model'] as String? ?? '',
-        managerBrief: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
-        activeWorkingPath: activePath,
-        projectName: projectName,
-        scannedFiles: scannedFiles,
-        keyFilePreviews: keyFilePreviews,
-      );
+          final answerResult = await _inferenceService.generateDirectManagerAnswer(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
 
-      final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
-      final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
+          final rawAiResponse = (answerResult['content'] as String? ?? '').trim();
+          final promptTokens = answerResult['promptTokens'] as int? ?? 0;
+          final completionTokens = answerResult['completionTokens'] as int? ?? 0;
+          if (promptTokens > 0 || completionTokens > 0) {
+            appState?.recordTokenUsage(promptTokens, completionTokens);
+          }
 
-      // -------------------------------------------------------------
-      // PHASE 3: MANAGER SYNTHESIS & PROPOSED IMPLEMENTATION PLAN
-      // -------------------------------------------------------------
-      _currentActivityTitle = 'Manager: Synthesizing Findings…';
-      _currentActivitySubtitle = 'Preparing executive report and implementation roadmap';
-      _currentActivity = ExecutionActivity(
-        activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
-        projectId: projectId,
-        correlationId: _conversation!.id,
-        workerId: 'worker.manager',
-        workerType: 'Manager',
-        title: 'Manager — Synthesizing',
-        status: ActivityStatus.running,
-        startTime: startNow,
-        currentAction: 'Synthesizing Researcher findings & formulating implementation roadmap…',
-        completedActions: [
-          '✓ Inspected workspace structure',
-          if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
-          if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
-          '✓ Manager formulated execution plan & delegated task to Researcher',
-          '✓ Researcher completed deep analysis of project architecture & UX patterns',
-        ],
-        filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
-        workers: const [
-          WorkerActivityItem(
+          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
+          if (finalContent.isEmpty) {
+            finalContent = rawAiResponse;
+          }
+
+          finalCompletedActions = [
+            '✓ Inspected workspace structure',
+            '✓ Query answered directly from workspace context & memory',
+          ];
+
+          finalWorkers = const [
+            WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Answered user query directly',
+            ),
+          ];
+          break;
+
+        case UserIntent.codeImplementation:
+          // -------------------------------------------------------------
+          // INTENT: DIRECT CODE MODIFICATION
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Planning Code Changes…';
+          _currentActivitySubtitle = 'Senior Programmer generating implementation';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
             workerId: 'worker.manager',
-            name: 'Manager',
-            role: 'Executive Orchestrator',
-            status: 'RUNNING',
-            currentAction: 'Synthesizing report & formulating implementation roadmap',
-          ),
-          WorkerActivityItem(
+            workerType: 'Manager',
+            title: 'Programmer — Implementing',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Generating code implementation & surgical modifications…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'COMPLETED',
+                currentAction: 'Formulated code requirements',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'RUNNING',
+                currentAction: 'Generating code modifications',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          final codeResult = await _inferenceService.generateDirectManagerAnswer(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final rawAiResponse = (codeResult['content'] as String? ?? '').trim();
+          final promptTokens = codeResult['promptTokens'] as int? ?? 0;
+          final completionTokens = codeResult['completionTokens'] as int? ?? 0;
+          if (promptTokens > 0 || completionTokens > 0) {
+            appState?.recordTokenUsage(promptTokens, completionTokens);
+          }
+
+          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
+          if (finalContent.isEmpty) {
+            finalContent = rawAiResponse;
+          }
+
+          finalCompletedActions = [
+            '✓ Inspected workspace structure',
+            '✓ Planned code modifications',
+            '✓ Programmer generated implementation code',
+          ];
+
+          finalWorkers = const [
+            WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Planned code requirements',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.programmer',
+              name: 'Programmer',
+              role: 'Senior Engineer',
+              status: 'COMPLETED',
+              currentAction: 'Delivered code modifications',
+            ),
+          ];
+          break;
+
+        case UserIntent.complexResearch:
+          // -------------------------------------------------------------
+          // INTENT: MULTI-AGENT DEEP RESEARCH PIPELINE
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Planning & Delegating…';
+          _currentActivitySubtitle = 'Analyzing workspace structure & formulating research brief';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.manager',
+            workerType: 'Manager',
+            title: 'Manager — Formulating Plan',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Decomposing request & formulating research brief for Researcher…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Formulating execution plan & delegating research brief',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'WAITING',
+                currentAction: 'Standing by for Manager delegation brief',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          final managerPlanResult = await _inferenceService.generateManagerPlan(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
+          final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
+
+          _currentActivityTitle = 'Researcher: Investigating Codebase…';
+          _currentActivitySubtitle = 'Evaluating UI/UX patterns & component architecture';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
             workerId: 'worker.researcher',
-            name: 'Researcher',
-            role: 'Specialist',
-            status: 'COMPLETED',
-            currentAction: 'Delivered research dossier',
-          ),
-        ],
-        isLive: true,
-      );
-      notifyListeners();
+            workerType: 'Researcher',
+            title: 'Researcher — Investigating',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Analyzing component hierarchy & UX improvement opportunities…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+              '✓ Manager formulated execution plan & delegated task to Researcher',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'WAITING',
+                currentAction: 'Awaiting Researcher findings dossier',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'RUNNING',
+                currentAction: 'Conducting deep codebase investigation & UX evaluation',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
 
-      final synthesisResult = await _inferenceService.generateManagerSynthesis(
-        baseUrl: activeProv['baseUrl'] as String? ?? '',
-        apiKey: activeProv['apiKey'] as String? ?? '',
-        model: activeProv['model'] as String? ?? '',
-        userPrompt: cleanPrompt,
-        managerPlan: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
-        researcherFindings: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
-        projectName: projectName,
-      );
+          final researcherResult = await _inferenceService.generateResearcherFindings(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            managerBrief: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
 
-      final rawAiResponse = (synthesisResult['content'] as String? ?? '').trim();
+          final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
+          final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
 
-      // Record total telemetry
-      final totalPromptTokens = (managerPlanResult['promptTokens'] as int? ?? 0) +
-          (researcherResult['promptTokens'] as int? ?? 0) +
-          (synthesisResult['promptTokens'] as int? ?? 0);
-      final totalCompletionTokens = (managerPlanResult['completionTokens'] as int? ?? 0) +
-          (researcherResult['completionTokens'] as int? ?? 0) +
-          (synthesisResult['completionTokens'] as int? ?? 0);
+          _currentActivityTitle = 'Manager: Synthesizing Findings…';
+          _currentActivitySubtitle = 'Preparing executive report and implementation roadmap';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.manager',
+            workerType: 'Manager',
+            title: 'Manager — Synthesizing',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Synthesizing Researcher findings & formulating implementation roadmap…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+              '✓ Manager formulated execution plan & delegated task to Researcher',
+              '✓ Researcher completed deep analysis of project architecture & UX patterns',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Synthesizing report & formulating implementation roadmap',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Delivered research dossier',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
 
-      if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
-        appState?.recordTokenUsage(totalPromptTokens, totalCompletionTokens);
+          final synthesisResult = await _inferenceService.generateManagerSynthesis(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            managerPlan: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+            researcherFindings: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
+            conversationHistory: cleanHistory,
+            projectName: projectName,
+          );
+
+          final rawAiResponse = (synthesisResult['content'] as String? ?? '').trim();
+
+          final totalPromptTokens = (managerPlanResult['promptTokens'] as int? ?? 0) +
+              (researcherResult['promptTokens'] as int? ?? 0) +
+              (synthesisResult['promptTokens'] as int? ?? 0);
+          final totalCompletionTokens = (managerPlanResult['completionTokens'] as int? ?? 0) +
+              (researcherResult['completionTokens'] as int? ?? 0) +
+              (synthesisResult['completionTokens'] as int? ?? 0);
+
+          if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+            appState?.recordTokenUsage(totalPromptTokens, totalCompletionTokens);
+          }
+
+          final extracted = MessageSanitizer.extractUserFacingNarrative(rawAiResponse);
+          var text = extracted.userFacingNarrative;
+          if (text.isEmpty && cleanResearcherDossier.isNotEmpty) {
+            text = cleanResearcherDossier;
+          }
+          if (text.isEmpty) {
+            text = 'I inspected your project workspace and analyzed the architecture and component structure. Would you like me to formulate a concrete implementation plan for the Programmer and QA Tester?';
+          }
+          finalContent = text;
+
+          finalCompletedActions = [
+            '✓ Inspected workspace structure',
+            if (_currentActivity != null && _currentActivity!.filesRead.isNotEmpty)
+              '✓ Read ${_currentActivity!.filesRead.length} project files',
+            '✓ Manager formulated execution plan and delegated task to Researcher',
+            '✓ Researcher completed deep analysis of project architecture & UX patterns',
+            '✓ Manager synthesized findings and prepared implementation roadmap',
+          ];
+
+          finalWorkers = const [
+            WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Synthesized findings & formulated implementation plan',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.researcher',
+              name: 'Researcher',
+              role: 'Specialist',
+              status: 'COMPLETED',
+              currentAction: 'Delivered research dossier',
+            ),
+          ];
+          break;
       }
-
-      final extracted = MessageSanitizer.extractUserFacingNarrative(rawAiResponse);
-      var text = extracted.userFacingNarrative;
-      if (text.isEmpty && cleanResearcherDossier.isNotEmpty) {
-        text = cleanResearcherDossier;
-      }
-      if (text.isEmpty) {
-        text = 'I inspected your project workspace and analyzed the architecture and component structure. Would you like me to formulate a concrete implementation plan for the Programmer and QA Tester?';
-      }
-      finalContent = text;
     } catch (err) {
       finalContent = '⚠️ Inference Error from "${activeProv['name'] ?? activeProv['baseUrl']}":\n\n'
           '$err\n\n'
@@ -508,32 +900,27 @@ class ChatController extends ChangeNotifier {
       startTime: startNow,
       endTime: DateTime.now().toIso8601String(),
       currentAction: 'Execution completed',
-      completedActions: [
-        '✓ Inspected workspace structure',
-        if (_currentActivity != null && _currentActivity!.filesRead.isNotEmpty)
-          '✓ Read ${_currentActivity!.filesRead.length} project files',
-        '✓ Manager formulated execution plan and delegated task to Researcher',
-        '✓ Researcher completed deep analysis of project architecture & UX patterns',
-        '✓ Manager synthesized findings and prepared implementation roadmap',
-      ],
+      completedActions: finalCompletedActions.isNotEmpty
+          ? finalCompletedActions
+          : [
+              '✓ Inspected workspace structure',
+              if (_currentActivity != null && _currentActivity!.filesRead.isNotEmpty)
+                '✓ Read ${_currentActivity!.filesRead.length} project files',
+              '✓ Execution completed',
+            ],
       filesRead: _currentActivity?.filesRead ?? const [],
       commands: const [],
-      workers: const [
-        WorkerActivityItem(
-          workerId: 'worker.manager',
-          name: 'Manager',
-          role: 'Executive Orchestrator',
-          status: 'COMPLETED',
-          currentAction: 'Synthesized findings & formulated implementation plan',
-        ),
-        WorkerActivityItem(
-          workerId: 'worker.researcher',
-          name: 'Researcher',
-          role: 'Specialist',
-          status: 'COMPLETED',
-          currentAction: 'Delivered research dossier',
-        ),
-      ],
+      workers: finalWorkers.isNotEmpty
+          ? finalWorkers
+          : const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'COMPLETED',
+                currentAction: 'Execution completed',
+              ),
+            ],
       metrics: {
         'files_inspected': _currentActivity?.filesRead.length ?? 0,
       },

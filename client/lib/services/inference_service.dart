@@ -162,25 +162,201 @@ class InferenceService {
     }
   }
 
-  /// Multi-Agent Phase 1: Manager analyzes request & forms a delegation brief for the Researcher.
-  Future<Map<String, dynamic>> generateManagerPlan({
-    required String baseUrl,
-    required String apiKey,
-    required String model,
-    required String userPrompt,
-    String? activeWorkingPath,
-    String? projectName,
-    List<String>? scannedFiles,
-    Map<String, String>? keyFilePreviews,
-  }) async {
+  Uri _getChatUri(String baseUrl) {
     final cleanUrl = baseUrl.trim().endsWith('/')
         ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
         : baseUrl.trim();
     final endpointUrl = cleanUrl.endsWith('/chat/completions')
         ? cleanUrl
         : '$cleanUrl/chat/completions';
-    final uri = Uri.parse(endpointUrl);
+    return Uri.parse(endpointUrl);
+  }
 
+  Future<Map<String, dynamic>> _sendWithHistory({
+    required Uri uri,
+    required String apiKey,
+    required String model,
+    required String systemPrompt,
+    required String currentPrompt,
+    List<Map<String, String>>? conversationHistory,
+  }) async {
+    final cleaned = <Map<String, String>>[];
+
+    if (conversationHistory != null && conversationHistory.isNotEmpty) {
+      final recent = conversationHistory.length > 10
+          ? conversationHistory.sublist(conversationHistory.length - 10)
+          : conversationHistory;
+      for (final msg in recent) {
+        final role = msg['role'] ?? 'user';
+        final content = (msg['content'] ?? '').trim();
+        if (content.isEmpty) continue;
+        if (cleaned.isNotEmpty && cleaned.last['role'] == role) {
+          cleaned.last['content'] = '${cleaned.last['content']}\n\n$content';
+        } else {
+          cleaned.add({'role': role, 'content': content});
+        }
+      }
+    }
+
+    if (cleaned.isNotEmpty && cleaned.last['role'] == 'user') {
+      cleaned.last['content'] = '${cleaned.last['content']}\n\n$currentPrompt';
+    } else {
+      cleaned.add({'role': 'user', 'content': currentPrompt});
+    }
+
+    if (cleaned.isNotEmpty && cleaned.first['role'] != 'user') {
+      cleaned.insert(0, {'role': 'user', 'content': 'Hello'});
+    }
+
+    try {
+      final standardMessages = [
+        {'role': 'system', 'content': systemPrompt},
+        ...cleaned,
+      ];
+      return await _postRequest(uri, apiKey, model, standardMessages);
+    } catch (_) {
+      // Fallback: merge system prompt into the first user message
+      final mergedMessages = <Map<String, String>>[];
+      for (var i = 0; i < cleaned.length; i++) {
+        if (i == 0) {
+          mergedMessages.add({
+            'role': 'user',
+            'content': '$systemPrompt\n\n---\n${cleaned[0]['content']}',
+          });
+        } else {
+          mergedMessages.add(cleaned[i]);
+        }
+      }
+      return await _postRequest(uri, apiKey, model, mergedMessages);
+    }
+  }
+
+  /// Fast-path: Manager answers simple questions, status queries, or greetings directly.
+  Future<Map<String, dynamic>> generateDirectManagerAnswer({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    List<Map<String, String>>? conversationHistory,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final uri = _getChatUri(baseUrl);
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Engineering Manager (Executive Orchestrator).');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
+    buffer.writeln('You have direct visibility into the project workspace files, architecture, and conversation history.');
+    if (scannedFiles != null && scannedFiles.isNotEmpty) {
+      buffer.writeln('\nWorkspace Files:');
+      for (final f in scannedFiles.take(35)) {
+        buffer.writeln('- `$f`');
+      }
+    }
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nKey Project File Snippets:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- $k ---');
+        buffer.writeln(v);
+      });
+    }
+    buffer.writeln('\nYOUR TASK AS MANAGER:');
+    buffer.writeln('1. Answer the user\'s question or message directly, clearly, concisely, and professionally.');
+    buffer.writeln('2. Reference workspace files, configurations, and conversation context accurately.');
+    buffer.writeln('3. Do NOT initiate a full multi-agent delegation pipeline for simple queries or conversation.');
+    buffer.writeln('4. Respond strictly in pure, natural Markdown text. Never emit <tool_call> or pseudo-function JSON.');
+
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
+  }
+
+  /// Implementation Phase: Manager converts completed research findings into a concrete implementation plan.
+  Future<Map<String, dynamic>> generateImplementationPlan({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    required String previousResearchOrContext,
+    List<Map<String, String>>? conversationHistory,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final uri = _getChatUri(baseUrl);
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
+    buffer.writeln('\nCRITICAL CONTEXT & MANDATE:');
+    buffer.writeln('The research and codebase investigation phase has ALREADY COMPLETED successfully.');
+    buffer.writeln('The user has explicitly approved proceeding to the Implementation Phase: "$userPrompt".');
+    buffer.writeln('DO NOT repeat the research, DO NOT re-evaluate the stack from scratch, and DO NOT ask to research again.');
+    buffer.writeln('Your task is to produce the authoritative, detailed Engineering Implementation Plan and delegate work packages to the Senior Programmer and QA Tester.');
+    if (previousResearchOrContext.isNotEmpty) {
+      buffer.writeln('\nPREVIOUS WORKFORCE RESEARCH & TECHNICAL FINDINGS:');
+      buffer.writeln(previousResearchOrContext);
+    }
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nActive Workspace Key Files:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- $k ---');
+        buffer.writeln(v);
+      });
+    }
+    buffer.writeln('\nDELIVER A HIGHLY DETAILED, PRODUCTION-READY IMPLEMENTATION PLAN IN PURE MARKDOWN:');
+    buffer.writeln('1. **Sprint / Phase Overview**: High-level execution summary (e.g., Phase A: Quick Wins / Security & Quality Hardening).');
+    buffer.writeln('2. **Engineering Issue Tickets (Linear / GitHub format)**:');
+    buffer.writeln('   For EACH ticket, include:');
+    buffer.writeln('   - **Ticket ID & Title**: e.g., `[TASK-01] Production Security Headers & Next.js Config Hardening`');
+    buffer.writeln('   - **Assignee**: Senior Programmer');
+    buffer.writeln('   - **Priority**: Critical / High / Medium');
+    buffer.writeln('   - **Estimated Story Points / Hours**');
+    buffer.writeln('   - **Target Files**: Exact files to create or modify');
+    buffer.writeln('   - **Acceptance Criteria**: Concrete checklist (`- [ ] ...`)');
+    buffer.writeln('3. **Programmer Technical Specification & Code Modifications**:');
+    buffer.writeln('   Provide exact, production-ready code snippets and surgical configuration changes for the Programmer.');
+    buffer.writeln('4. **QA Test Matrix**:');
+    buffer.writeln('   A structured markdown table with columns: `Test ID | Scope (Unit/Integration/E2E) | Test Scenario | Expected Outcome`.');
+    buffer.writeln('5. **Execution Handoff**:');
+    buffer.writeln('   Confirm that the Programmer and QA Tester workers are dispatched to begin code execution.');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
+
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
+  }
+
+  /// Multi-Agent Phase 1: Manager analyzes request & forms a delegation brief for the Researcher.
+  Future<Map<String, dynamic>> generateManagerPlan({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    List<Map<String, String>>? conversationHistory,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final uri = _getChatUri(baseUrl);
     final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
 
     final buffer = StringBuffer();
@@ -209,12 +385,14 @@ class InferenceService {
     buffer.writeln('- All project files and context have already been inspected and supplied above.');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
-    final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Respond strictly in pure Markdown prose. Never emit <tool_call> or pseudo-function JSON.'},
-      {'role': 'user', 'content': buffer.toString()},
-    ];
-
-    return await _postRequest(uri, apiKey, model, messages);
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
   }
 
   /// Multi-Agent Phase 2: Researcher executes deep codebase investigation based on Manager's brief.
@@ -223,19 +401,13 @@ class InferenceService {
     required String apiKey,
     required String model,
     required String managerBrief,
+    List<Map<String, String>>? conversationHistory,
     String? activeWorkingPath,
     String? projectName,
     List<String>? scannedFiles,
     Map<String, String>? keyFilePreviews,
   }) async {
-    final cleanUrl = baseUrl.trim().endsWith('/')
-        ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
-        : baseUrl.trim();
-    final endpointUrl = cleanUrl.endsWith('/chat/completions')
-        ? cleanUrl
-        : '$cleanUrl/chat/completions';
-    final uri = Uri.parse(endpointUrl);
-
+    final uri = _getChatUri(baseUrl);
     final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
 
     final buffer = StringBuffer();
@@ -260,12 +432,14 @@ class InferenceService {
     buffer.writeln('- All project files and context have already been inspected and supplied above.');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
-    final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Specialist Researcher. Provide rigorous, deep, concrete technical analysis in pure Markdown. Never emit <tool_call> or pseudo-function JSON.'},
-      {'role': 'user', 'content': buffer.toString()},
-    ];
-
-    return await _postRequest(uri, apiKey, model, messages);
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: managerBrief,
+      conversationHistory: conversationHistory,
+    );
   }
 
   /// Multi-Agent Phase 3: Manager synthesizes Researcher findings, summarizes for user, and proposes implementation plan.
@@ -276,15 +450,10 @@ class InferenceService {
     required String userPrompt,
     required String managerPlan,
     required String researcherFindings,
+    List<Map<String, String>>? conversationHistory,
     String? projectName,
   }) async {
-    final cleanUrl = baseUrl.trim().endsWith('/')
-        ? baseUrl.trim().substring(0, baseUrl.trim().length - 1)
-        : baseUrl.trim();
-    final endpointUrl = cleanUrl.endsWith('/chat/completions')
-        ? cleanUrl
-        : '$cleanUrl/chat/completions';
-    final uri = Uri.parse(endpointUrl);
+    final uri = _getChatUri(baseUrl);
 
     final buffer = StringBuffer();
     buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Head of the Workforce).');
@@ -301,12 +470,14 @@ class InferenceService {
     buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
-    final messages = [
-      {'role': 'system', 'content': 'You are the AutonomOS Workforce Engineering Manager. Communicate directly, professionally, and clearly with the user in pure Markdown. Never emit <tool_call> or pseudo-function JSON.'},
-      {'role': 'user', 'content': buffer.toString()},
-    ];
-
-    return await _postRequest(uri, apiKey, model, messages);
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
   }
 
   Future<Map<String, dynamic>> _postRequest(

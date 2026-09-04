@@ -54,6 +54,11 @@ class BaseCrawler(ABC):
     def id(self) -> str:
         return self.crawler_id
 
+    @property
+    def capabilities(self) -> list[CrawlerCapability]:
+        """Return the list of declared capabilities for this crawler."""
+        return list(self._capabilities)
+
     def get_capabilities(self) -> list[CrawlerCapability]:
         """Return the list of declared capabilities for this crawler."""
         return list(self._capabilities)

@@ -259,3 +259,22 @@ class FetchSizeLimitError(FetchError):
         self.max_bytes = max_bytes
 
 
+# Documentation-specific Errors
+class DocumentationError(ResearchError):
+    """Base exception for documentation subsystem errors."""
+    pass
+
+
+class DocumentationValidationError(DocumentationError):
+    """Raised when documentation source, page, or section fails validation."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid documentation model '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, d)
+        self.field_name = field_name
+        self.reason = reason
+
+
+

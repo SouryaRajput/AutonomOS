@@ -168,6 +168,13 @@ class CrawlerSpawner:
     ) -> BaseCrawler:
         """Instantiate a crawler instance configured with multiple capabilities."""
         primary_cap = capabilities[0] if capabilities else CrawlerCapability.WEB_SEARCH
+        if primary_cap in (CrawlerCapability.DOCUMENTATION_CRAWL, CrawlerCapability.DOCUMENT_SCRAPING):
+            from core.research.crawler.documentation import DocumentationCrawler
+            return DocumentationCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+            )
         if primary_cap == CrawlerCapability.WEB_FETCH:
             from core.research.crawler.web_fetch import WebFetchCrawler
             return WebFetchCrawler(
@@ -178,6 +185,13 @@ class CrawlerSpawner:
         if primary_cap == CrawlerCapability.WEB_SEARCH or CrawlerCapability.WEB_SEARCH in capabilities:
             from core.research.crawler.web_search import WebSearchCrawler
             return WebSearchCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+            )
+        if CrawlerCapability.DOCUMENTATION_CRAWL in capabilities or CrawlerCapability.DOCUMENT_SCRAPING in capabilities:
+            from core.research.crawler.documentation import DocumentationCrawler
+            return DocumentationCrawler(
                 crawler_id=crawler_id,
                 name=name or f"Specialist Crawler [{capabilities[0].value}]",
                 capabilities=capabilities,

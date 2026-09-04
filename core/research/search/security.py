@@ -87,10 +87,9 @@ def sanitize_url(url: str) -> str:
     if not url or not isinstance(url, str):
         return ""
 
-    sanitized = _URL_CREDENTIAL_REGEX.sub(r"://\1:[REDACTED]@", url.strip())
-
+    raw = url.strip()
     try:
-        parsed = urllib.parse.urlsplit(sanitized)
+        parsed = urllib.parse.urlsplit(raw)
         if parsed.query:
             query_pairs = urllib.parse.parse_qsl(parsed.query, keep_blank_values=True)
             new_pairs = []
@@ -100,7 +99,7 @@ def sanitize_url(url: str) -> str:
                 else:
                     new_pairs.append((k, v))
             new_query = urllib.parse.urlencode(new_pairs)
-            sanitized = urllib.parse.urlunsplit((
+            raw = urllib.parse.urlunsplit((
                 parsed.scheme,
                 parsed.netloc,
                 parsed.path,
@@ -110,6 +109,7 @@ def sanitize_url(url: str) -> str:
     except Exception:
         pass
 
+    sanitized = _URL_CREDENTIAL_REGEX.sub(r"://\1:[REDACTED]@", raw)
     return sanitized
 
 
