@@ -44,7 +44,8 @@ class AppState extends ChangeNotifier {
   late final ApprovalRepository approvalRepo;
   late final ActivityRepository activityRepo;
   late final ArtifactRepository artifactRepo;
-  late final DeepLinkNavigator navigator;
+  late final DeepLinkNavigator deepLinkNavigator;
+  DeepLinkNavigator get navigator => deepLinkNavigator;
 
   // Global UI State
   AppTab _activeTab = AppTab.chat;
