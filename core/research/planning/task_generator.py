@@ -36,6 +36,23 @@ class CrawlerTaskGenerator:
 
                 for cap in q.required_capabilities:
                     task_id = f"ctask-{q.question_id}-{cap.value.lower()[:4]}-{i+1}"
+                    task_params = {
+                        "allowed_domains": plan.scope.allowed_domains,
+                        "excluded_domains": plan.scope.excluded_domains,
+                        "recency_days": plan.scope.recency_days,
+                        "limit": 5,
+                    }
+                    if cap == CrawlerCapability.PROJECT_CONTEXT_CRAWL:
+                        task_params.update({
+                            "query": query,
+                            "extract_source": True,
+                            "extract_contracts": True,
+                            "extract_docs": True,
+                            "extract_configs": True,
+                            "extract_dependencies": True,
+                            "allow_vcs": True,
+                        })
+
                     task = CrawlerTask(
                         task_id=task_id,
                         request_id=plan.request_id,
@@ -43,12 +60,7 @@ class CrawlerTaskGenerator:
                         question_id=q.question_id,
                         query_or_target=query,
                         required_capability=cap,
-                        parameters={
-                            "allowed_domains": plan.scope.allowed_domains,
-                            "excluded_domains": plan.scope.excluded_domains,
-                            "recency_days": plan.scope.recency_days,
-                            "limit": 5,
-                        },
+                        parameters=task_params,
                         status=CrawlerTaskStatus.PENDING,
                         correlation_id=plan.correlation_id,
                         timeout_seconds=plan.scope.timeout_seconds,

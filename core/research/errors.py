@@ -730,3 +730,143 @@ class StructuredDataInvalidFieldError(StructuredDataQueryError):
         self.reason = reason
 
 
+# =============================================================================
+# Project Context Errors (Phase 1 / Part 8)
+# =============================================================================
+
+class ProjectContextError(ResearchError):
+    """Base exception for all ProjectContextCrawler operations."""
+    pass
+
+
+class ProjectValidationError(ProjectContextError):
+    """Raised when a project model, path, structure, or metadata fails validation."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Project validation error for '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.field_name = field_name
+        self.reason = reason
+
+
+class ProjectSecurityError(ProjectContextError):
+    """Raised when a project path, reference, or action violates security bounds."""
+    def __init__(self, target: str, reason: str, details: Optional[dict] = None):
+        msg = f"Project security violation for '{target}': {reason}"
+        d = {"target": target, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.reason = reason
+
+
+class ProjectNotFoundError(ProjectContextError):
+    """Raised when a referenced project, path, or file is not found."""
+    def __init__(self, path_or_id: str, reason: str = ""):
+        msg = f"Project entity '{path_or_id}' not found"
+        if reason:
+            msg += f": {reason}"
+        super().__init__(msg, details={"path_or_id": path_or_id, "reason": reason})
+        self.path_or_id = path_or_id
+        self.reason = reason
+
+
+class ProjectProviderError(ProjectContextError):
+    """Raised on general project workspace provider failures."""
+    def __init__(self, provider_id: str = "", message: str = "", details: Optional[dict] = None):
+        msg = f"Project provider '{provider_id}' error: {message}" if provider_id else f"Project provider error: {message}"
+        d = {"provider_id": provider_id}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.provider_id = provider_id
+        self.message = message
+
+
+class ProjectFileNotFoundError(ProjectNotFoundError, ProjectProviderError):
+    """Raised when a requested file or directory does not exist in the project."""
+    def __init__(self, path: str, project_id: str = "", details: Optional[dict] = None):
+        msg = f"Project file not found: '{path}'"
+        if project_id:
+            msg += f" in project '{project_id}'"
+        d = {"path": path, "project_id": project_id}
+        if details:
+            d.update(details)
+        super().__init__(path_or_id=path, reason=msg)
+        self.path = path
+        self.project_id = project_id
+
+
+class ProjectAccessError(ProjectProviderError):
+    """Raised when access to a project path is denied (e.g. permission error, inaccessible file)."""
+    def __init__(self, path: str, reason: str = "Access denied", details: Optional[dict] = None):
+        msg = f"Access denied for project path '{path}': {reason}"
+        d = {"path": path, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(message=msg, details=d)
+        self.path = path
+        self.reason = reason
+
+
+class ProjectMalformedFileError(ProjectProviderError):
+    """Raised when a file cannot be parsed or read due to corruption or malformed encoding."""
+    def __init__(self, path: str, reason: str = "Malformed file", details: Optional[dict] = None):
+        msg = f"Malformed project file '{path}': {reason}"
+        d = {"path": path, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(message=msg, details=d)
+        self.path = path
+        self.reason = reason
+
+
+class ProjectResourceLimitError(ProjectProviderError):
+    """Raised when a resource ceiling (file size, tree depth, total files, bytes) is exceeded."""
+    def __init__(self, resource_type: str, actual_value: Any, max_limit: Any, details: Optional[dict] = None):
+        msg = f"Project resource limit exceeded for {resource_type}: {actual_value} > {max_limit}"
+        d = {"resource_type": resource_type, "actual_value": actual_value, "max_limit": max_limit}
+        if details:
+            d.update(details)
+        super().__init__(message=msg, details=d)
+        self.resource_type = resource_type
+        self.actual_value = actual_value
+        self.max_limit = max_limit
+
+
+class ProjectTimeoutError(ProjectProviderError):
+    """Raised when a project workspace provider operation times out."""
+    def __init__(self, operation: str, timeout_seconds: float, target: str = "", details: Optional[dict] = None):
+        msg = f"Project operation '{operation}' timed out after {timeout_seconds}s"
+        if target:
+            msg += f" for target '{target}'"
+        d = {"operation": operation, "timeout_seconds": timeout_seconds, "target": target}
+        if details:
+            d.update(details)
+        super().__init__(message=msg, details=d)
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds
+        self.target = target
+
+
+class ProjectCancelledError(ProjectProviderError):
+    """Raised when a project workspace provider operation is cancelled."""
+    def __init__(self, operation: str = "", target: str = "", message: str = "", details: Optional[dict] = None):
+        msg = f"Project operation '{operation}' was cancelled"
+        if target:
+            msg += f" for target '{target}'"
+        if message:
+            msg += f": {message}"
+        d = {"operation": operation, "target": target}
+        if details:
+            d.update(details)
+        super().__init__(message=msg, details=d)
+        self.operation = operation
+        self.target = target
+
+
+
+

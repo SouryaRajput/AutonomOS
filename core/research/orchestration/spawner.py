@@ -27,11 +27,13 @@ class CrawlerSpawner:
         repo_provider: Optional[Any] = None,
         community_provider: Optional[Any] = None,
         structured_provider: Optional[Any] = None,
+        project_provider: Optional[Any] = None,
     ):
         self.registry = registry or CrawlerRegistry()
         self.repo_provider = repo_provider
         self.community_provider = community_provider
         self.structured_provider = structured_provider
+        self.project_provider = project_provider
 
     def spawn_crawlers_for_plan(
         self,
@@ -186,6 +188,14 @@ class CrawlerSpawner:
     ) -> BaseCrawler:
         """Instantiate a crawler instance configured with multiple capabilities."""
         primary_cap = capabilities[0] if capabilities else CrawlerCapability.WEB_SEARCH
+        if primary_cap == CrawlerCapability.PROJECT_CONTEXT_CRAWL or CrawlerCapability.PROJECT_CONTEXT_CRAWL in capabilities:
+            from core.research.crawler.project_context import ProjectContextCrawler
+            return ProjectContextCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+                provider=self.project_provider,
+            )
         if primary_cap == CrawlerCapability.PROJECT_MEMORY_LOOKUP or CrawlerCapability.PROJECT_MEMORY_LOOKUP in capabilities:
             from core.research.crawler.project_memory import ProjectMemoryCrawler
             return ProjectMemoryCrawler(

@@ -5,7 +5,7 @@ from core.research.crawler.capability import CrawlerCapabilitySpec, matches_capa
 from core.research.crawler.community import CommunityCrawler
 from core.research.crawler.documentation import DocumentationCrawler
 from core.research.crawler.lifecycle import CrawlerStateMachine
-from core.research.crawler.mock_crawler import MockCrawler
+from core.research.crawler.project_context import ProjectContextCrawler
 from core.research.crawler.project_memory import ProjectMemoryCrawler
 from core.research.crawler.registry import CrawlerRegistry
 from core.research.crawler.repository import RepositoryCrawler
@@ -26,5 +26,6 @@ __all__ = [
     "RepositoryCrawler",
     "CommunityCrawler",
     "ProjectMemoryCrawler",
+    "ProjectContextCrawler",
     "StructuredDataCrawler",
 ]

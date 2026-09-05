@@ -131,9 +131,19 @@ class ResearchDecomposer:
             or "data feed" in q_lower
         ):
             caps.append(CrawlerCapability.STRUCTURED_DATA_EXTRACTION)
-        if "fetch" in q_lower or "url" in q_lower or "page" in q_lower or "http" in q_lower:
-            caps.append(CrawlerCapability.WEB_FETCH)
-        if "memory" in q_lower or "project" in q_lower:
+        if (
+            "project context" in q_lower
+            or "project structure" in q_lower
+            or "workspace" in q_lower
+            or "local project" in q_lower
+            or "current project" in q_lower
+            or "project contract" in q_lower
+            or "project source" in q_lower
+        ):
+            caps.append(CrawlerCapability.PROJECT_CONTEXT_CRAWL)
+        if "memory" in q_lower:
+            caps.append(CrawlerCapability.PROJECT_MEMORY_LOOKUP)
+        elif "project" in q_lower and CrawlerCapability.PROJECT_CONTEXT_CRAWL not in caps:
             caps.append(CrawlerCapability.PROJECT_MEMORY_LOOKUP)
         if not caps:
             caps.append(CrawlerCapability.WEB_SEARCH)

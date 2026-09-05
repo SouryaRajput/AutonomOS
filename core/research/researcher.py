@@ -50,6 +50,7 @@ class Researcher:
         repo_provider: Optional[Any] = None,
         community_provider: Optional[Any] = None,
         structured_provider: Optional[Any] = None,
+        project_provider: Optional[Any] = None,
     ):
         self.registry = registry or CrawlerRegistry()
         self.spawner = spawner or CrawlerSpawner(
@@ -57,6 +58,7 @@ class Researcher:
             repo_provider=repo_provider,
             community_provider=community_provider,
             structured_provider=structured_provider,
+            project_provider=project_provider,
         )
         self.supervisor = supervisor or CrawlerSupervisor()
 
