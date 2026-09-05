@@ -1192,68 +1192,142 @@ class _TaskContractCardState extends State<_TaskContractCard> {
 }
 
 // --- Code Fence View ---
-class _CodeFenceView extends StatelessWidget {
+class _CodeFenceView extends StatefulWidget {
   final String code;
   final String language;
   final bool isDark;
 
   const _CodeFenceView({
+    super.key,
     required this.code,
     required this.language,
     required this.isDark,
   });
 
   @override
+  State<_CodeFenceView> createState() => _CodeFenceViewState();
+}
+
+class _CodeFenceViewState extends State<_CodeFenceView> {
+  bool _isExpanded = false;
+
+  @override
   Widget build(BuildContext context) {
+    final lines = widget.code.trim().split('\n');
+    final isLongCode = lines.length > 6;
+    final isAsciiDiagram = widget.code.contains('|---|') ||
+        widget.code.contains('+---+') ||
+        (widget.code.contains('|') && widget.code.contains('-->')) ||
+        widget.code.contains('├──') ||
+        widget.code.contains('└──') ||
+        widget.code.contains('| IDEA') ||
+        widget.code.contains('| BUILD');
+
+    final displayLabel = isAsciiDiagram
+        ? 'Architecture Diagram / Schema (${lines.length} lines)'
+        : widget.language.isNotEmpty
+            ? '${widget.language} • ${lines.length} lines'
+            : 'Technical Data • ${lines.length} lines';
+
     return Container(
       width: double.infinity,
-      margin: const EdgeInsets.symmetric(vertical: AppTokens.space8),
+      margin: const EdgeInsets.symmetric(vertical: AppTokens.space6),
       decoration: BoxDecoration(
-        color: isDark ? AppTokens.darkSurface : AppTokens.lightSurface,
+        color: widget.isDark ? AppTokens.darkSurface : AppTokens.lightSurface,
         borderRadius: AppTokens.borderRadiusMd,
-        border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
+        border: Border.all(color: widget.isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: AppTokens.space12, vertical: AppTokens.space4),
-            decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder)),
+          InkWell(
+            onTap: isLongCode ? () => setState(() => _isExpanded = !_isExpanded) : null,
+            borderRadius: BorderRadius.vertical(
+              top: const Radius.circular(8),
+              bottom: Radius.circular((!isLongCode || _isExpanded) ? 0 : 8),
             ),
-            child: Row(
-              children: [
-                Text(
-                  language.isNotEmpty ? language : 'code',
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: AppTokens.darkTextMuted),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: AppTokens.space12, vertical: AppTokens.space6),
+              decoration: BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(
+                    color: (_isExpanded || !isLongCode)
+                        ? (widget.isDark ? AppTokens.darkBorder : AppTokens.lightBorder)
+                        : Colors.transparent,
+                  ),
                 ),
-                const Spacer(),
-                IconButton(
-                  icon: const Icon(Icons.copy_outlined, size: 13),
-                  tooltip: 'Copy code snippet',
-                  visualDensity: VisualDensity.compact,
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: code));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Code snippet copied to clipboard'), duration: Duration(seconds: 2)),
-                    );
-                  },
-                ),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.all(AppTokens.space12),
-            child: SelectableText(
-              code,
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 12.5,
-                height: 1.45,
-                color: isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    isAsciiDiagram ? Icons.account_tree_outlined : Icons.code_rounded,
+                    size: 13,
+                    color: widget.isDark ? AppTokens.brandSecondary : AppTokens.brandPrimary,
+                  ),
+                  const SizedBox(width: AppTokens.space8),
+                  Text(
+                    displayLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.w500,
+                      color: widget.isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary,
+                    ),
+                  ),
+                  const Spacer(),
+                  if (isLongCode) ...[
+                    TextButton.icon(
+                      onPressed: () => setState(() => _isExpanded = !_isExpanded),
+                      icon: Icon(
+                        _isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                        size: 14,
+                        color: widget.isDark ? AppTokens.brandSecondary : AppTokens.brandPrimary,
+                      ),
+                      label: Text(
+                        _isExpanded ? 'Collapse' : 'Show Details',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: widget.isDark ? AppTokens.brandSecondary : AppTokens.brandPrimary,
+                        ),
+                      ),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        visualDensity: VisualDensity.compact,
+                        minimumSize: Size.zero,
+                        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    const SizedBox(width: AppTokens.space4),
+                  ],
+                  IconButton(
+                    icon: const Icon(Icons.copy_outlined, size: 13),
+                    tooltip: 'Copy',
+                    visualDensity: VisualDensity.compact,
+                    onPressed: () {
+                      Clipboard.setData(ClipboardData(text: widget.code));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Copied to clipboard'), duration: Duration(seconds: 2)),
+                      );
+                    },
+                  ),
+                ],
               ),
             ),
           ),
+          if (!isLongCode || _isExpanded)
+            Padding(
+              padding: const EdgeInsets.all(AppTokens.space12),
+              child: SelectableText(
+                widget.code,
+                style: TextStyle(
+                  fontFamily: 'monospace',
+                  fontSize: 12.0,
+                  height: 1.45,
+                  color: widget.isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -265,8 +265,8 @@ class InferenceService {
     }
     buffer.writeln('\nYOUR TASK AS MANAGER:');
     buffer.writeln('1. Answer the user\'s question or message directly, clearly, concisely, and professionally.');
-    buffer.writeln('2. Reference workspace files, configurations, and conversation context accurately.');
-    buffer.writeln('3. Do NOT initiate a full multi-agent delegation pipeline for simple queries or conversation.');
+    buffer.writeln('2. Keep the response minimal, scannable, and high-signal (under 250 words). Avoid giant walls of text or multi-line ASCII art.');
+    buffer.writeln('3. Reference workspace files, configurations, and conversation context accurately.');
     buffer.writeln('4. Respond strictly in pure, natural Markdown text. Never emit <tool_call> or pseudo-function JSON.');
 
     return await _sendWithHistory(
@@ -279,7 +279,7 @@ class InferenceService {
     );
   }
 
-  /// Implementation Phase: Manager converts completed research findings into a concrete implementation plan.
+  /// Implementation Phase: Manager converts completed research findings into a clean, executive implementation roadmap.
   Future<Map<String, dynamic>> generateImplementationPlan({
     required String baseUrl,
     required String apiKey,
@@ -299,10 +299,10 @@ class InferenceService {
     buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
     buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
     buffer.writeln('\nCRITICAL CONTEXT & MANDATE:');
-    buffer.writeln('The research and codebase investigation phase has ALREADY COMPLETED successfully.');
-    buffer.writeln('The user has explicitly approved proceeding to the Implementation Phase: "$userPrompt".');
-    buffer.writeln('DO NOT repeat the research, DO NOT re-evaluate the stack from scratch, and DO NOT ask to research again.');
-    buffer.writeln('Your task is to produce the authoritative, detailed Engineering Implementation Plan and delegate work packages to the Senior Programmer and QA Tester.');
+    buffer.writeln('The research phase has completed and the user approved proceeding to implementation: "$userPrompt".');
+    buffer.writeln('Present a clean, high-signal, executive implementation roadmap for the user.');
+    buffer.writeln('The Programmer and QA Tester receive and execute the full technical code modifications directly into the workspace.');
+    buffer.writeln('DO NOT dump giant code implementations or raw multi-page files in this user chat. Keep this chat summary clean, structured, and under 350 words.');
     if (previousResearchOrContext.isNotEmpty) {
       buffer.writeln('\nPREVIOUS WORKFORCE RESEARCH & TECHNICAL FINDINGS:');
       buffer.writeln(previousResearchOrContext);
@@ -314,24 +314,22 @@ class InferenceService {
         buffer.writeln(v);
       });
     }
-    buffer.writeln('\nDELIVER A HIGHLY DETAILED, PRODUCTION-READY IMPLEMENTATION PLAN IN PURE MARKDOWN:');
-    buffer.writeln('1. **Sprint / Phase Overview**: High-level execution summary (e.g., Phase A: Quick Wins / Security & Quality Hardening).');
+    buffer.writeln('\nDELIVER A CLEAN IMPLEMENTATION ROADMAP IN PURE MARKDOWN:');
+    buffer.writeln('1. **Sprint Overview**: 1-2 sentences on the primary focus of Phase A (e.g. Security & Hardening).');
     buffer.writeln('2. **Engineering Issue Tickets (Linear / GitHub format)**:');
-    buffer.writeln('   For EACH ticket, include:');
-    buffer.writeln('   - **Ticket ID & Title**: e.g., `[TASK-01] Production Security Headers & Next.js Config Hardening`');
+    buffer.writeln('   For EACH ticket (2-3 tickets maximum):');
+    buffer.writeln('   - **Ticket ID & Title**: e.g., `[TASK-01] Production Security Headers & Config Hardening`');
     buffer.writeln('   - **Assignee**: Senior Programmer');
-    buffer.writeln('   - **Priority**: Critical / High / Medium');
-    buffer.writeln('   - **Estimated Story Points / Hours**');
+    buffer.writeln('   - **Priority & Estimate**: e.g., High • 2 Story Points');
     buffer.writeln('   - **Target Files**: Exact files to create or modify');
     buffer.writeln('   - **Acceptance Criteria**: Concrete checklist (`- [ ] ...`)');
-    buffer.writeln('3. **Programmer Technical Specification & Code Modifications**:');
-    buffer.writeln('   Provide exact, production-ready code snippets and surgical configuration changes for the Programmer.');
-    buffer.writeln('4. **QA Test Matrix**:');
-    buffer.writeln('   A structured markdown table with columns: `Test ID | Scope (Unit/Integration/E2E) | Test Scenario | Expected Outcome`.');
-    buffer.writeln('5. **Execution Handoff**:');
-    buffer.writeln('   Confirm that the Programmer and QA Tester workers are dispatched to begin code execution.');
+    buffer.writeln('3. **QA Test Matrix**:');
+    buffer.writeln('   A compact markdown table: `Test ID | Scope | Test Scenario | Expected Outcome`.');
+    buffer.writeln('4. **Execution Handoff**:');
+    buffer.writeln('   Confirm that the Programmer and QA Tester workers are dispatched to begin implementation.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
-    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- Do NOT dump massive raw code snippets or full file implementations in this chat.');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks.');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
     return await _sendWithHistory(
@@ -386,16 +384,21 @@ class InferenceService {
       });
     }
 
-    buffer.writeln('\nDELIVER A HIGH-IMPACT, COMPREHENSIVE EXECUTIVE SUMMARY IN PURE MARKDOWN:');
-    buffer.writeln('1. **Executive Summary**: High-level synthesis of what was investigated and key takeaways.');
-    buffer.writeln('2. **Core Technical Findings & Stack Evaluation**: Clear bullet points or a markdown table detailing architecture patterns, code quality, UI/UX structure, and performance observations.');
-    buffer.writeln('3. **Identified Deficiencies & Quick Wins**: High-priority areas for optimization, security hardening, or modernization.');
-    buffer.writeln('4. **Actionable Roadmap**: Clear recommendations organized logically into phases (e.g. Phase A: Quick Wins / Hardening, Phase B: Architectural Improvements).');
-    buffer.writeln('5. **Call to Action**: Conclude by asking the user:');
+    buffer.writeln('\nROLE & AUDIENCE:');
+    buffer.writeln('You are speaking directly to the human project owner. The user wants a clean, minimal, executive summary.');
+    buffer.writeln('The giant technical data, schemas, and evidence packages have ALREADY been saved for the Programmer and QA Tester in `.autonomos/research/evidence/`.');
+    buffer.writeln('DO NOT dump giant technical data or code onto the user!');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS FOR USER-FACING SUMMARY:');
+    buffer.writeln('1. NO CODE DUMPS: Do NOT output code snippets, class definitions (@dataclass), or programming language implementations. The Programmer handles code in the implementation phase.');
+    buffer.writeln('2. NO ASCII ART OR BOX DIAGRAMS: Do NOT output giant text-box flowcharts (| IDEA | -> | BUILD |) or ASCII directory trees (|-- decisions/). Use concise bullet points or small markdown tables instead.');
+    buffer.writeln('3. KEEP IT MINIMAL & HIGH-SIGNAL: The entire response must be concise (under 250-300 words). Focus strictly on key architectural takeaways, trade-offs, and product impact.');
+    buffer.writeln('4. NO ROBOTIC SYSTEM ARTIFACTS: Do NOT output any XML tags, tool calls, or pseudo function blocks.');
+    buffer.writeln('\nDELIVER A MINIMAL EXECUTIVE SUMMARY IN CLEAN MARKDOWN:');
+    buffer.writeln('1. **Executive Overview**: 2-3 concise sentences summarizing what was analyzed.');
+    buffer.writeln('2. **Key Architectural & UX Takeaways**: 3-5 high-signal bullet points or a compact table.');
+    buffer.writeln('3. **Recommended Next Steps**: 2-3 high-level phases in 1 sentence each.');
+    buffer.writeln('4. **Call to Action**: Conclude by asking:');
     buffer.writeln('   "Would you like me to proceed with creating a detailed implementation plan for the Programmer and QA Tester to begin executing Phase A?"');
-    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
-    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
-    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
     return await _sendWithHistory(
       uri: uri,
@@ -521,23 +524,26 @@ class InferenceService {
     final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
 
     final buffer = StringBuffer();
-    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Head of the Workforce).');
+    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
     buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
     buffer.writeln('User\'s Request: "$userPrompt"');
     buffer.writeln('Your Initial Plan:\n$managerPlan\n');
-    buffer.writeln('Specialist Researcher Findings Dossier:\n$researcherFindings\n');
-    buffer.writeln('STORAGE & EVIDENCE LOCATION:');
-    buffer.writeln('All research findings and evidence packages are automatically persisted to `.autonomos/research/evidence/` (specifically `.autonomos/research/evidence/findings.md` and `.autonomos/research/evidence/evidence_package.json`).');
-    buffer.writeln('If referencing storage locations, reference `.autonomos/research/evidence/`. Do NOT invent nonexistent arbitrary file paths.');
-    buffer.writeln('\nYOUR TASK AS MANAGER:');
-    buffer.writeln('Synthesize these findings and deliver a complete, highly structured response to the user with:');
-    buffer.writeln('1. **Workforce Execution Summary**: Briefly explain how you planned the work and what the Researcher investigated.');
-    buffer.writeln('2. **Key Findings & Recommendations**: The core concrete recommendations, code snippets, architectural improvements, and UI/UX patterns tailored to the project.');
-    buffer.writeln('3. **Proposed Implementation Plan**: A clear step-by-step roadmap for implementing these improvements.');
-    buffer.writeln('4. **Call to Action**: Conclude by asking the user: "Would you like me to proceed with creating an implementation plan for the Programmer and QA Tester to begin implementing these changes?"');
-    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
-    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
-    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
+    buffer.writeln('Specialist Researcher Findings Dossier (Technical Data):\n$researcherFindings\n');
+    buffer.writeln('\nROLE & AUDIENCE:');
+    buffer.writeln('You are presenting an executive synthesis directly to the human user / project owner.');
+    buffer.writeln('The giant technical data, schemas, and evidence packages have ALREADY been saved for the Programmer and QA Tester in `.autonomos/research/evidence/`.');
+    buffer.writeln('The user wants a clean, minimal, high-signal summary. Do NOT dump giant walls of text, code, or ASCII diagrams onto the user.');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS FOR USER-FACING SYNTHESIS:');
+    buffer.writeln('1. NO CODE DUMPS: Do NOT output code snippets, class schemas (@dataclass), function definitions, or SQL in this response. The Senior Programmer handles code execution in the workspace.');
+    buffer.writeln('2. NO ASCII ART OR BOX DIAGRAMS: Do NOT output giant text-box flowcharts (| IDEA | -> | BUILD |) or ASCII directory trees (|-- decisions/). Use concise bullet points or small tables instead.');
+    buffer.writeln('3. KEEP IT MINIMAL & HIGH-SIGNAL: Keep the response under 300 words total. Focus strictly on key architectural decisions, identified opportunities, and product impact.');
+    buffer.writeln('4. NO ROBOTIC SYSTEM ARTIFACTS: Do NOT output any XML tags, tool calls, or pseudo function blocks.');
+    buffer.writeln('\nDELIVER A MINIMAL EXECUTIVE RESPONSE IN CLEAN MARKDOWN:');
+    buffer.writeln('1. **Executive Overview**: 2-3 concise sentences summarizing what was investigated and key takeaways.');
+    buffer.writeln('2. **Key Findings**: 3-5 high-signal bullet points or a compact table summarizing architectural strengths and UX opportunities.');
+    buffer.writeln('3. **Recommended Next Steps**: 2-3 high-level phases described in 1 sentence each.');
+    buffer.writeln('4. **Call to Action**: Conclude by asking:');
+    buffer.writeln('   "Would you like me to proceed with creating the implementation plan for the Programmer and QA Tester to begin executing Phase A?"');
 
     return await _sendWithHistory(
       uri: uri,
