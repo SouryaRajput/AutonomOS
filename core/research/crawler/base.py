@@ -135,3 +135,11 @@ class BaseCrawler(ABC):
         Must return a structured CrawlerReport with full lineage to the task and request.
         """
         pass
+
+    def execute(
+        self,
+        task: CrawlerTask,
+        context: Optional[WorkerRuntimeContext] = None,
+    ) -> CrawlerReport:
+        """Convenience alias for execute_crawler_task."""
+        return self.execute_crawler_task(task, context=context)

@@ -17,6 +17,18 @@ from core.research.community.extractor import (
     StructuredDiscussionPost,
 )
 from core.research.community.fake_provider import FakeDiscussionProvider
+from core.research.community.link_handoff import (
+    CandidateLink,
+    LinkHandoffPipeline,
+    LinkHandoffPolicy,
+)
+from core.research.community.providers import (
+    GitHubDiscussionsProvider,
+    HackerNewsDiscussionProvider,
+    RateLimitedDiscussionProvider,
+    RedditJsonProvider,
+    StackExchangeDiscussionProvider,
+)
 from core.research.community.models import (
     AccessStatus,
     CommunityContext,
@@ -81,6 +93,7 @@ __all__ = [
     "DiscussionProvider",
     "DiscussionQuote",
     "DiscussionRelevanceScorer",
+    "CandidateLink",
     "DiscussionRetrievalLimits",
     "DiscussionRetrievalParams",
     "DiscussionSearchParams",
@@ -94,7 +107,14 @@ __all__ = [
     "DiscussionTopicQuery",
     "EngagementMetrics",
     "FakeDiscussionProvider",
+    "GitHubDiscussionsProvider",
+    "HackerNewsDiscussionProvider",
+    "LinkHandoffPipeline",
+    "LinkHandoffPolicy",
+    "RateLimitedDiscussionProvider",
+    "RedditJsonProvider",
     "RetrievedDiscussionThread",
+    "StackExchangeDiscussionProvider",
     "ScoredDiscussionPost",
     "SelectedDiscussionContext",
     "StructuredDiscussion",

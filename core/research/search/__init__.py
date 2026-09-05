@@ -26,6 +26,7 @@ from core.research.search.provider import (
     MockSearchProvider,
     SearchProvider,
 )
+from core.research.search.providers.duckduckgo import DuckDuckGoSearchProvider
 from core.research.search.providers.tavily import TavilySearchProvider
 from core.research.search.security import (
     compute_effective_timeout,
@@ -57,6 +58,7 @@ __all__ = [
     "SearchProvider",
     "MockSearchProvider",
     "TestSearchProvider",
+    "DuckDuckGoSearchProvider",
     "TavilySearchProvider",
     "create_search_provider",
     "validate_network_target",

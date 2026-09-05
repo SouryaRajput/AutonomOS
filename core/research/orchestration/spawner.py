@@ -25,9 +25,13 @@ class CrawlerSpawner:
         self,
         registry: Optional[CrawlerRegistry] = None,
         repo_provider: Optional[Any] = None,
+        community_provider: Optional[Any] = None,
+        structured_provider: Optional[Any] = None,
     ):
         self.registry = registry or CrawlerRegistry()
         self.repo_provider = repo_provider
+        self.community_provider = community_provider
+        self.structured_provider = structured_provider
 
     def spawn_crawlers_for_plan(
         self,
@@ -182,6 +186,33 @@ class CrawlerSpawner:
     ) -> BaseCrawler:
         """Instantiate a crawler instance configured with multiple capabilities."""
         primary_cap = capabilities[0] if capabilities else CrawlerCapability.WEB_SEARCH
+        if primary_cap == CrawlerCapability.PROJECT_MEMORY_LOOKUP or CrawlerCapability.PROJECT_MEMORY_LOOKUP in capabilities:
+            from core.research.crawler.project_memory import ProjectMemoryCrawler
+            return ProjectMemoryCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+            )
+        if primary_cap == CrawlerCapability.COMMUNITY_CRAWL or CrawlerCapability.COMMUNITY_CRAWL in capabilities:
+            from core.research.crawler.community import CommunityCrawler
+            return CommunityCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+                provider=self.community_provider,
+            )
+        if (
+            primary_cap == CrawlerCapability.STRUCTURED_DATA_EXTRACTION
+            or CrawlerCapability.STRUCTURED_DATA_EXTRACTION in capabilities
+            or (self.structured_provider is not None and (primary_cap == CrawlerCapability.API_QUERY or CrawlerCapability.API_QUERY in capabilities))
+        ):
+            from core.research.crawler.structured import StructuredDataCrawler
+            return StructuredDataCrawler(
+                crawler_id=crawler_id,
+                name=name or f"Specialist Crawler [{capabilities[0].value}]",
+                capabilities=capabilities,
+                provider=self.structured_provider,
+            )
         if primary_cap == CrawlerCapability.REPOSITORY_INSPECTION or CrawlerCapability.REPOSITORY_INSPECTION in capabilities:
             from core.research.crawler.repository import RepositoryCrawler
             return RepositoryCrawler(

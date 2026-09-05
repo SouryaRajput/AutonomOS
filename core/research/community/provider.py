@@ -319,3 +319,27 @@ class DiscussionProvider(ABC):
             CommunityProviderError: On provider failure.
         """
         pass
+
+    def retrieve_comment_subtree(
+        self,
+        discussion_id: str,
+        root_comment_id: str,
+        max_comments: Optional[int] = None,
+        max_depth: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> list[DiscussionPost]:
+        """
+        Retrieve a specific comment subtree/branch for deep hierarchy expansion.
+        Default implementation calls get_comments targeting the parent root_comment_id.
+        """
+        params = DiscussionCommentsParams(
+            discussion_id=discussion_id,
+            platform=self.platform,
+            parent_id=root_comment_id,
+            max_comments=max_comments,
+            max_depth=max_depth,
+            timeout_seconds=timeout_seconds,
+        )
+        return self.get_comments(params, is_cancelled=is_cancelled)
+

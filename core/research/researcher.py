@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 from core.research.contracts.crawler_report import CrawlerReport
 from core.research.contracts.plan import ResearchPlan
@@ -47,9 +47,17 @@ class Researcher:
         registry: Optional[CrawlerRegistry] = None,
         spawner: Optional[CrawlerSpawner] = None,
         supervisor: Optional[CrawlerSupervisor] = None,
+        repo_provider: Optional[Any] = None,
+        community_provider: Optional[Any] = None,
+        structured_provider: Optional[Any] = None,
     ):
         self.registry = registry or CrawlerRegistry()
-        self.spawner = spawner or CrawlerSpawner(self.registry)
+        self.spawner = spawner or CrawlerSpawner(
+            self.registry,
+            repo_provider=repo_provider,
+            community_provider=community_provider,
+            structured_provider=structured_provider,
+        )
         self.supervisor = supervisor or CrawlerSupervisor()
 
     def execute_research(

@@ -266,17 +266,34 @@ class WorkforceRuntime:
         )
 
         # Register real inference providers and fallback mock provider
-        from core.inference.real_providers import GroqProvider, OpenRouterProvider, OllamaProvider
+        from core.inference.real_providers import (
+            GeminiProvider,
+            GroqProvider,
+            OllamaProvider,
+            OpenAIProvider,
+            OpenRouterProvider,
+        )
+        gemini_provider = GeminiProvider()
+        openai_provider = OpenAIProvider()
         groq_provider = GroqProvider()
         openrouter_provider = OpenRouterProvider()
         ollama_provider = OllamaProvider()
         default_mock_provider = MockProvider()
 
+        self.providers.register_provider(gemini_provider)
+        self.providers.register_provider(openai_provider)
         self.providers.register_provider(groq_provider)
         self.providers.register_provider(openrouter_provider)
         self.providers.register_provider(ollama_provider)
         self.providers.register_provider(default_mock_provider)
-        self.models.sync_from_providers([groq_provider, openrouter_provider, ollama_provider, default_mock_provider])
+        self.models.sync_from_providers([
+            gemini_provider,
+            openai_provider,
+            groq_provider,
+            openrouter_provider,
+            ollama_provider,
+            default_mock_provider,
+        ])
 
         # Stage 10: Manager Agent & Workforce Orchestrator
         self.manager_agent = ManagerAgent(self.inference)

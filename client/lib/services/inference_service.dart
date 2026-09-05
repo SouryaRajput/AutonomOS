@@ -344,6 +344,69 @@ class InferenceService {
     );
   }
 
+  /// Summary Phase: Manager synthesizes previous findings or workspace state into a clean executive summary.
+  Future<Map<String, dynamic>> generateSummaryOfFindings({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    required String previousResearchOrContext,
+    List<Map<String, String>>? conversationHistory,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final uri = _getChatUri(baseUrl);
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
+    buffer.writeln('\nCRITICAL CONTEXT & MANDATE:');
+    buffer.writeln('The user requested a summary of findings, research, or current codebase analysis: "$userPrompt".');
+    buffer.writeln('DO NOT repeat the research, DO NOT spin up crawlers, and DO NOT re-investigate from scratch.');
+    buffer.writeln('Synthesize the findings, insights, and recommendations from the previous workforce activity and conversation history into a concise, high-impact executive summary.');
+
+    if (previousResearchOrContext.isNotEmpty) {
+      buffer.writeln('\nEXISTING RESEARCH FINDINGS & ANALYSIS:');
+      buffer.writeln(previousResearchOrContext);
+    }
+    if (scannedFiles != null && scannedFiles.isNotEmpty) {
+      buffer.writeln('\nWorkspace Files:');
+      for (final f in scannedFiles.take(30)) {
+        buffer.writeln('- `$f`');
+      }
+    }
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nKey Project File Snippets:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- $k ---');
+        buffer.writeln(v);
+      });
+    }
+
+    buffer.writeln('\nDELIVER A HIGH-IMPACT, COMPREHENSIVE EXECUTIVE SUMMARY IN PURE MARKDOWN:');
+    buffer.writeln('1. **Executive Summary**: High-level synthesis of what was investigated and key takeaways.');
+    buffer.writeln('2. **Core Technical Findings & Stack Evaluation**: Clear bullet points or a markdown table detailing architecture patterns, code quality, UI/UX structure, and performance observations.');
+    buffer.writeln('3. **Identified Deficiencies & Quick Wins**: High-priority areas for optimization, security hardening, or modernization.');
+    buffer.writeln('4. **Actionable Roadmap**: Clear recommendations organized logically into phases (e.g. Phase A: Quick Wins / Hardening, Phase B: Architectural Improvements).');
+    buffer.writeln('5. **Call to Action**: Conclude by asking the user:');
+    buffer.writeln('   "Would you like me to proceed with creating a detailed implementation plan for the Programmer and QA Tester to begin executing Phase A?"');
+    buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
+    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- Respond strictly in pure, natural Markdown text.');
+
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
+  }
+
   /// Multi-Agent Phase 1: Manager analyzes request & forms a delegation brief for the Researcher.
   Future<Map<String, dynamic>> generateManagerPlan({
     required String baseUrl,
@@ -452,15 +515,21 @@ class InferenceService {
     required String researcherFindings,
     List<Map<String, String>>? conversationHistory,
     String? projectName,
+    String? activeWorkingPath,
   }) async {
     final uri = _getChatUri(baseUrl);
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
 
     final buffer = StringBuffer();
     buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Head of the Workforce).');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
     buffer.writeln('User\'s Request: "$userPrompt"');
     buffer.writeln('Your Initial Plan:\n$managerPlan\n');
     buffer.writeln('Specialist Researcher Findings Dossier:\n$researcherFindings\n');
-    buffer.writeln('YOUR TASK AS MANAGER:');
+    buffer.writeln('STORAGE & EVIDENCE LOCATION:');
+    buffer.writeln('All research findings and evidence packages are automatically persisted to `.autonomos/research/evidence/` (specifically `.autonomos/research/evidence/findings.md` and `.autonomos/research/evidence/evidence_package.json`).');
+    buffer.writeln('If referencing storage locations, reference `.autonomos/research/evidence/`. Do NOT invent nonexistent arbitrary file paths.');
+    buffer.writeln('\nYOUR TASK AS MANAGER:');
     buffer.writeln('Synthesize these findings and deliver a complete, highly structured response to the user with:');
     buffer.writeln('1. **Workforce Execution Summary**: Briefly explain how you planned the work and what the Researcher investigated.');
     buffer.writeln('2. **Key Findings & Recommendations**: The core concrete recommendations, code snippets, architectural improvements, and UI/UX patterns tailored to the project.');

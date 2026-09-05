@@ -34,10 +34,10 @@ from core.research.community.provider import (
 from core.research.community.retriever import DiscussionThreadRetriever
 from core.research.community.selection import (
     DiscussionSelectionEngine,
-    DiscussionSelectionOutcome,
     DiscussionSelectionParams,
-    DiscussionSelectionStatus,
+    DiscussionSelectionResult,
     DiscussionTopicQuery,
+    SelectedDiscussionContext,
 )
 from core.research.contracts.crawler_report import CrawlerReport, RawSourceReference
 from core.research.contracts.crawler_task import CrawlerTask
@@ -215,7 +215,7 @@ class CommunityCrawler(Worker, BaseCrawler):
             elif not isinstance(tags, list):
                 tags = None
 
-            min_score = float(params.get("min_score", 0.0))
+            min_score = float(params.get("min_score", 0.2))
             max_discussions = int(params.get("max_discussions", 5))
             max_comments = int(params.get("max_comments_per_discussion", params.get("max_comments", 50)))
             max_depth = int(params.get("max_reply_depth", params.get("max_depth", 5)))
@@ -224,6 +224,8 @@ class CommunityCrawler(Worker, BaseCrawler):
             timeout_seconds = float(params.get("timeout_seconds", task.timeout_seconds or 30.0))
             max_concurrency = int(params.get("max_concurrency", 4))
             include_replies = bool(params.get("include_replies", True))
+            expand_subtrees = bool(params.get("expand_subtrees", False))
+            subtree_root_id = params.get("subtree_root_id")
 
             # Validate target URLs against SSRF if a direct discussion URL was passed
             if target_str.startswith(("http://", "https://")):
@@ -259,17 +261,19 @@ class CommunityCrawler(Worker, BaseCrawler):
             topic_query = DiscussionTopicQuery.from_input(
                 topic=topic,
                 keywords=keywords,
-                platform=platform,
-                community=community,
+                target_platform=platform,
+                target_community=community,
                 repository_association=repository,
                 tags=tags,
                 after_date=str(after_date) if after_date else None,
                 before_date=str(before_date) if before_date else None,
                 min_score=min_score,
+                include_ancestors=True,
+                include_replies=include_replies,
             )
 
             selection_params = DiscussionSelectionParams(
-                query=topic_query,
+                topic_query=topic_query,
                 max_discussions=max_discussions,
                 max_comments_per_discussion=max_comments,
                 max_reply_depth=max_depth,
@@ -277,14 +281,42 @@ class CommunityCrawler(Worker, BaseCrawler):
                 max_requests=max_requests,
                 timeout_seconds=timeout_seconds,
                 max_concurrency=max_concurrency,
-                include_replies=include_replies,
+                is_cancelled=is_task_cancelled,
             )
 
             # Execute selection engine
-            outcome: DiscussionSelectionOutcome = self.selection_engine.select_discussions(
+            outcome: DiscussionSelectionResult = self.selection_engine.select_and_retrieve(
                 params=selection_params,
-                is_cancelled=is_task_cancelled,
+                task=task,
             )
+
+            # Dynamic Subtree Expansion (Limitation 2 mitigation)
+            if outcome.selected_discussions and (expand_subtrees or subtree_root_id):
+                for sel in outcome.selected_discussions:
+                    try:
+                        if subtree_root_id and sel.discussion.thread_structure.has_post(str(subtree_root_id)):
+                            self.thread_retriever.expand_discussion_subtree(
+                                discussion=sel.discussion,
+                                root_comment_id=str(subtree_root_id),
+                                max_comments=max_comments,
+                                max_depth=max_depth,
+                                timeout_seconds=timeout_seconds,
+                                is_cancelled=is_task_cancelled,
+                            )
+                        elif expand_subtrees:
+                            comments = sel.discussion.thread_structure.get_comments_only()
+                            if comments:
+                                top_c = max(comments, key=lambda c: (c.engagement.score or 0))
+                                self.thread_retriever.expand_discussion_subtree(
+                                    discussion=sel.discussion,
+                                    root_comment_id=top_c.post_id,
+                                    max_comments=max_comments,
+                                    max_depth=max_depth,
+                                    timeout_seconds=timeout_seconds,
+                                    is_cancelled=is_task_cancelled,
+                                )
+                    except Exception as exp_err:
+                        logger.warning(f"Subtree expansion failed for discussion '{sel.discussion.discussion_id}': {exp_err}")
 
             elapsed = round(time.perf_counter() - start_time, 4)
 
@@ -292,7 +324,7 @@ class CommunityCrawler(Worker, BaseCrawler):
             if context and hasattr(context, "progress"):
                 context.progress.report(
                     60.0,
-                    f"Selected {len(outcome.discussions_selected)} discussions ({len(outcome.materials_retrieved)} materials) for '{topic}'",
+                    f"Selected {len(outcome.selected_discussions)} discussions ({outcome.total_selected_posts} posts) for '{topic}'",
                 )
             if context and hasattr(context, "events"):
                 try:
@@ -300,16 +332,16 @@ class CommunityCrawler(Worker, BaseCrawler):
                         "community_discussions_discovered",
                         {
                             "query": topic,
-                            "discussions_discovered_count": len(outcome.discussions_discovered),
-                            "discussions_selected_count": len(outcome.discussions_selected),
-                            "materials_count": len(outcome.materials_retrieved),
+                            "discussions_discovered_count": outcome.discovered_candidates_count,
+                            "discussions_selected_count": len(outcome.selected_discussions),
+                            "materials_count": outcome.total_selected_posts,
                         },
                     )
                 except Exception:
                     pass
 
             # Handle cancelled outcome
-            if outcome.status == DiscussionSelectionStatus.CANCELLED:
+            if outcome.outcome_status == CrawlerReportStatus.FAILED and "cancelled" in (outcome.outcome_summary or "").lower():
                 self.transition_to(CrawlerStatus.CANCELLED, reason="Community selection cancelled")
                 return CrawlerReport(
                     report_id=f"crep-cancel-{task.task_id}",
@@ -325,8 +357,8 @@ class CommunityCrawler(Worker, BaseCrawler):
                     execution_time_seconds=elapsed,
                 )
 
-            # Handle empty / no results outcome
-            if outcome.status == DiscussionSelectionStatus.NO_RESULTS or len(outcome.materials_retrieved) == 0:
+            # Check if empty / no results
+            if outcome.outcome_status == CrawlerReportStatus.EMPTY or (len(outcome.selected_discussions) == 0 and not outcome.errors):
                 self.tasks_completed += 1
                 self.transition_to(CrawlerStatus.COMPLETED, reason="Community crawl completed with 0 relevant materials")
                 if context and hasattr(context, "progress"):
@@ -339,7 +371,7 @@ class CommunityCrawler(Worker, BaseCrawler):
                                 "query": topic,
                                 "status": CrawlerReportStatus.EMPTY.value,
                                 "materials_count": 0,
-                                "total_bytes": outcome.total_bytes_fetched,
+                                "total_bytes": outcome.total_bytes_retrieved,
                             },
                         )
                     except Exception:
@@ -358,30 +390,35 @@ class CommunityCrawler(Worker, BaseCrawler):
                     extracted_evidence=[],
                     summary=f"No relevant community discussions found for query '{topic}'.",
                     execution_time_seconds=elapsed,
-                    metadata=outcome.to_dict(),
+                    metadata={
+                        "discovered_candidates_count": outcome.discovered_candidates_count,
+                        "total_discussions_inspected": outcome.total_discussions_inspected,
+                        "total_posts_scored": outcome.total_posts_scored,
+                        "total_selected_posts": outcome.total_selected_posts,
+                        "total_bytes_retrieved": outcome.total_bytes_retrieved,
+                    },
                 )
 
-            # Convert materials into RawSourceReferences and EvidenceItems
-            raw_sources: list[RawSourceReference] = [m.to_raw_source_reference() for m in outcome.materials_retrieved]
-            extracted_evidence: list[EvidenceItem] = []
-            for m in outcome.materials_retrieved:
-                ev_items = m.to_evidence_items(
-                    request_id=task.request_id,
-                    crawler_task_id=task.task_id,
-                    crawler_id=self.crawler_id,
-                    question_id=task.question_id,
-                    correlation_id=task.correlation_id,
-                )
-                extracted_evidence.extend(ev_items)
+            # Convert result into report
+            report = outcome.to_crawler_report(task=task, crawler_id=self.crawler_id)
+            report.execution_time_seconds = elapsed
 
-            report_status = CrawlerReportStatus.PARTIAL if outcome.is_partial else CrawlerReportStatus.SUCCESS
-            self.tasks_completed += 1
-            self.transition_to(CrawlerStatus.COMPLETED, reason=f"Retrieved {len(outcome.materials_retrieved)} discussion materials")
+            if report.status in (CrawlerReportStatus.SUCCESS, CrawlerReportStatus.PARTIAL):
+                self.tasks_completed += 1
+                self.transition_to(CrawlerStatus.COMPLETED, reason=f"Retrieved {outcome.total_selected_posts} discussion materials")
+            elif report.status == CrawlerReportStatus.TIMED_OUT:
+                self.tasks_failed += 1
+                self.health = CrawlerHealthStatus.DEGRADED
+                self.transition_to(CrawlerStatus.FAILED, reason=report.error_message or "Operation timed out")
+            else:
+                self.tasks_failed += 1
+                self.health = CrawlerHealthStatus.DEGRADED
+                self.transition_to(CrawlerStatus.FAILED, reason=report.error_message or "Crawl failed")
 
             if context and hasattr(context, "progress"):
                 context.progress.report(
                     100.0,
-                    f"Retrieved {len(outcome.materials_retrieved)} discussion posts ({outcome.total_bytes_fetched} bytes) for '{topic}'",
+                    f"Retrieved {outcome.total_selected_posts} discussion posts ({outcome.total_bytes_retrieved} bytes) for '{topic}'",
                 )
             if context and hasattr(context, "events"):
                 try:
@@ -389,36 +426,15 @@ class CommunityCrawler(Worker, BaseCrawler):
                         "community_crawl_completed",
                         {
                             "query": topic,
-                            "status": report_status.value,
-                            "materials_count": len(outcome.materials_retrieved),
-                            "total_bytes": outcome.total_bytes_fetched,
+                            "status": report.status.value,
+                            "materials_count": outcome.total_selected_posts,
+                            "total_bytes": outcome.total_bytes_retrieved,
                         },
                     )
                 except Exception:
                     pass
 
-            summary_text = (
-                f"Successfully retrieved {len(outcome.materials_retrieved)} discussion posts "
-                f"across {len(outcome.discussions_selected)} threads ({outcome.total_bytes_fetched} bytes) for query '{topic}'."
-            )
-            if outcome.is_partial and outcome.partial_reasons:
-                summary_text += f" (Partial: {', '.join(outcome.partial_reasons)})"
-
-            return CrawlerReport(
-                report_id=f"crep-{uuid.uuid4().hex[:8]}",
-                crawler_task_id=task.task_id,
-                crawler_id=self.crawler_id,
-                request_id=task.request_id,
-                plan_id=task.plan_id,
-                question_id=task.question_id,
-                correlation_id=task.correlation_id,
-                status=report_status,
-                raw_sources=raw_sources,
-                extracted_evidence=extracted_evidence,
-                summary=summary_text,
-                execution_time_seconds=elapsed,
-                metadata=outcome.to_dict(),
-            )
+            return report
 
         except CommunityTimeoutError as te:
             elapsed = round(time.perf_counter() - start_time, 4)

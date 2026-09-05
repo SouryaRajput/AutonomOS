@@ -59,6 +59,11 @@ class CrawlerTask:
         self.cancelled_at = utc_now()
         self.completed_at = utc_now()
 
+    @property
+    def target(self) -> str:
+        """Alias for query_or_target."""
+        return self.query_or_target
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "task_id": self.task_id,

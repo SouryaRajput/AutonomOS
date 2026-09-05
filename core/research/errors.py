@@ -528,3 +528,205 @@ class CommunitySecurityError(CommunityProviderError):
         self.target = target
         self.reason = reason
 
+
+# Structured Data Errors (Phase 1 / Part 7)
+class StructuredDataError(ResearchError):
+    """Base exception for structured data subsystem errors."""
+    pass
+
+
+class StructuredDataValidationError(StructuredDataError):
+    """Raised when structured data source, request, response, record, or schema fails validation."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid structured data model '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.field_name = field_name
+        self.reason = reason
+
+
+class StructuredDataLocationError(StructuredDataError):
+    """Raised when a source path/location expression cannot be parsed or resolved against a payload."""
+    def __init__(self, path: str, reason: str, details: Optional[dict] = None):
+        msg = f"Source location error for '{path}': {reason}"
+        d = {"path": path, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.path = path
+        self.reason = reason
+
+
+class StructuredDataLimitError(StructuredDataError):
+    """Raised when structured data request limits, payload bounds, or nesting depths are exceeded."""
+    def __init__(self, limit_name: str, actual_value: Any, max_allowed: Any, details: Optional[dict] = None):
+        msg = f"Structured data limit '{limit_name}' exceeded: actual {actual_value} > allowed {max_allowed}"
+        d = {"limit": limit_name, "actual": actual_value, "allowed": max_allowed}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.limit_name = limit_name
+        self.actual_value = actual_value
+        self.max_allowed = max_allowed
+
+
+class StructuredDataProviderError(StructuredDataError):
+    """Base exception for structured data provider and transport failures."""
+    pass
+
+
+class StructuredDataCancelledError(StructuredDataProviderError):
+    """Raised when a structured data retrieval operation is cancelled by the caller."""
+    def __init__(self, target: str = "", operation: str = "", message: str = "", details: Optional[dict] = None):
+        msg = f"Structured data operation '{operation}' for '{target}' was cancelled"
+        if message:
+            msg += f": {message}"
+        d = {"target": target, "operation": operation}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.operation = operation
+
+
+class StructuredDataTimeoutError(StructuredDataProviderError):
+    """Raised when a structured data retrieval operation times out."""
+    def __init__(self, target: str, operation: str = "request", timeout_seconds: float = 30.0, details: Optional[dict] = None):
+        msg = f"Structured data operation '{operation}' for '{target}' timed out after {timeout_seconds}s"
+        d = {"target": target, "operation": operation, "timeout_seconds": timeout_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.operation = operation
+        self.timeout_seconds = timeout_seconds
+
+
+class StructuredDataAuthenticationError(StructuredDataProviderError):
+    """Raised when access to a structured data endpoint is denied due to missing/invalid credentials (401)."""
+    def __init__(self, target: str, status_code: int = 401, message: str = "Access denied", details: Optional[dict] = None):
+        msg = f"Structured data authentication failure ({status_code}) for '{target}': {message}"
+        d = {"target": target, "status_code": status_code, "message": message}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.status_code = status_code
+
+
+class StructuredDataAuthorizationError(StructuredDataAuthenticationError):
+    """Raised when an authenticated client lacks permissions to access a resource (403 Forbidden)."""
+    def __init__(self, target: str, status_code: int = 403, message: str = "Forbidden: Insufficient permissions", details: Optional[dict] = None):
+        super().__init__(target=target, status_code=status_code, message=message, details=details)
+
+
+class StructuredDataRateLimitError(StructuredDataProviderError):
+    """Raised when an endpoint's rate limit is exceeded (HTTP 429)."""
+    def __init__(
+        self,
+        provider_id: str,
+        retry_after_seconds: float = 60.0,
+        message: Optional[str] = None,
+        details: Optional[dict] = None,
+    ):
+        msg = message or f"Structured data provider '{provider_id}' rate limit exceeded (retry after {retry_after_seconds}s)"
+        d = {"provider_id": provider_id, "retry_after_seconds": retry_after_seconds}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.provider_id = provider_id
+        self.retry_after_seconds = retry_after_seconds
+
+
+class StructuredDataQuotaExceededError(StructuredDataRateLimitError):
+    """Raised when a structured data provider or endpoint daily/monthly quota is fully exhausted."""
+    def __init__(self, provider_id: str, message: str = "Resource quota exhausted", details: Optional[dict] = None):
+        msg = f"Structured data provider '{provider_id}' quota exhausted: {message}"
+        d = {"provider_id": provider_id, "quota_message": message}
+        if details:
+            d.update(details)
+        super().__init__(provider_id=provider_id, retry_after_seconds=3600.0, message=msg, details=d)
+        self.quota_message = message
+
+
+class StructuredDataNotFoundError(StructuredDataProviderError):
+    """Raised when a requested structured data resource or endpoint is not found (HTTP 404)."""
+    def __init__(self, target: str, message: str = "Resource not found", details: Optional[dict] = None):
+        msg = f"Structured data resource '{target}' not found: {message}"
+        d = {"target": target, "message": message}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+
+
+class StructuredDataMalformedResponseError(StructuredDataProviderError):
+    """Raised when response content cannot be parsed according to declared content type."""
+    def __init__(self, target: str, content_type: str, reason: str, details: Optional[dict] = None):
+        msg = f"Malformed structured data from '{target}' ({content_type}): {reason}"
+        d = {"target": target, "content_type": content_type, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.content_type = content_type
+        self.reason = reason
+
+
+class StructuredDataSecurityError(StructuredDataProviderError):
+    """Raised when a target URL violates SSRF or security constraints."""
+    def __init__(self, target: str, reason: str, details: Optional[dict] = None):
+        msg = f"Structured data security policy violation for '{target}': {reason}"
+        d = {"target": target, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.target = target
+        self.reason = reason
+
+
+class StructuredDataPolicyViolationError(StructuredDataSecurityError):
+    """Raised when a request violates domain scope, method policy, header rules, or body limits."""
+    pass
+
+
+# Structured Data Query Errors (Phase 1 / Part 7.6)
+class StructuredDataQueryError(StructuredDataError):
+    """Base exception for deterministic structured query and filtering failures."""
+    pass
+
+
+class StructuredDataInvalidFilterError(StructuredDataQueryError):
+    """Raised when a query filter specification is malformed or invalid."""
+    def __init__(self, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid structured query filter: {reason}"
+        super().__init__(msg, details=details)
+        self.reason = reason
+
+
+class StructuredDataInvalidOperatorError(StructuredDataQueryError):
+    """Raised when an unsupported or mismatched filter operator is used."""
+    def __init__(self, operator: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid structured query operator '{operator}': {reason}"
+        d = {"operator": operator, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.operator = operator
+        self.reason = reason
+
+
+class StructuredDataInvalidFieldError(StructuredDataQueryError):
+    """Raised when a query field name, path, or projection is invalid or dangerous."""
+    def __init__(self, field_name: str, reason: str, details: Optional[dict] = None):
+        msg = f"Invalid structured query field '{field_name}': {reason}"
+        d = {"field": field_name, "reason": reason}
+        if details:
+            d.update(details)
+        super().__init__(msg, details=d)
+        self.field_name = field_name
+        self.reason = reason
+
+

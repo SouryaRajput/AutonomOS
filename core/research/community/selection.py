@@ -352,6 +352,10 @@ class SelectedDiscussionContext:
         matching_map = {p.post.post_id: p for p in self.matching_posts}
 
         all_posts: list[StructuredDiscussionPost] = [p.post for p in self.matching_posts] + list(self.context_posts)
+        if self.discussion and hasattr(self.discussion, "posts"):
+            for dp in self.discussion.posts.values():
+                all_posts.append(dp)
+
         # Deduplicate posts by post_id
         seen_pids: set[str] = set()
         deduped_posts: list[StructuredDiscussionPost] = []
@@ -589,6 +593,8 @@ class DiscussionSelectionResult:
                     request_id=task.request_id,
                     crawler_task_id=task.task_id,
                     crawler_id=crawler_id,
+                    question_id=task.question_id,
+                    correlation_id=task.correlation_id,
                 )
                 extracted_evidence.extend(items)
 
@@ -610,6 +616,7 @@ class DiscussionSelectionResult:
             request_id=task.request_id,
             plan_id=task.plan_id,
             question_id=task.question_id,
+            correlation_id=task.correlation_id,
             status=status,
             raw_sources=raw_sources,
             extracted_evidence=extracted_evidence,
@@ -697,7 +704,14 @@ class DiscussionSelectionEngine:
                 outcome_summary="Discussion discovery was cancelled.",
                 execution_time_seconds=round(time.perf_counter() - start_time, 4),
             )
-        except (CommunityTimeoutError, CommunityProviderError, CommunityAuthenticationError) as e:
+        except CommunityTimeoutError as e:
+            return DiscussionSelectionResult(
+                outcome_status=CrawlerReportStatus.TIMED_OUT,
+                outcome_summary=f"Discussion discovery timed out: {str(e)}",
+                errors=[{"stage": "discovery", "error": str(e)}],
+                execution_time_seconds=round(time.perf_counter() - start_time, 4),
+            )
+        except (CommunityProviderError, CommunityAuthenticationError) as e:
             return DiscussionSelectionResult(
                 outcome_status=CrawlerReportStatus.FAILED,
                 outcome_summary=f"Discussion discovery failed: {str(e)}",
@@ -707,9 +721,10 @@ class DiscussionSelectionEngine:
 
         if not discovery_result.candidates:
             if discovery_result.errors:
+                is_timeout = any("timeout" in err.lower() for err in discovery_result.errors)
                 return DiscussionSelectionResult(
                     discovered_candidates_count=0,
-                    outcome_status=CrawlerReportStatus.FAILED,
+                    outcome_status=CrawlerReportStatus.TIMED_OUT if is_timeout else CrawlerReportStatus.FAILED,
                     outcome_summary=f"Discussion discovery failed: {'; '.join(discovery_result.errors)}",
                     errors=[{"stage": "discovery", "error": err} for err in discovery_result.errors],
                     execution_time_seconds=round(time.perf_counter() - start_time, 4),

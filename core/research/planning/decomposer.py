@@ -116,8 +116,21 @@ class ResearchDecomposer:
         """Infer required crawler capabilities from question text."""
         caps: list[CrawlerCapability] = []
         q_lower = question_text.lower()
+        if "community" in q_lower or "forum" in q_lower or "reddit" in q_lower or "discussion" in q_lower or "stack overflow" in q_lower or "stackexchange" in q_lower:
+            caps.append(CrawlerCapability.COMMUNITY_CRAWL)
         if "repo" in q_lower or "code" in q_lower or "github" in q_lower:
             caps.append(CrawlerCapability.REPOSITORY_INSPECTION)
+        if (
+            "structured data" in q_lower
+            or "structured dataset" in q_lower
+            or "json endpoint" in q_lower
+            or "rest endpoint" in q_lower
+            or "rest api" in q_lower
+            or "csv dataset" in q_lower
+            or "graphql endpoint" in q_lower
+            or "data feed" in q_lower
+        ):
+            caps.append(CrawlerCapability.STRUCTURED_DATA_EXTRACTION)
         if "fetch" in q_lower or "url" in q_lower or "page" in q_lower or "http" in q_lower:
             caps.append(CrawlerCapability.WEB_FETCH)
         if "memory" in q_lower or "project" in q_lower:
@@ -135,4 +148,7 @@ class ResearchDecomposer:
             targets.append(SourceType.ACADEMIC)
         if "forum" in q_lower or "community" in q_lower or "reddit" in q_lower:
             targets.append(SourceType.COMMUNITY)
+        if "structured" in q_lower or "endpoint" in q_lower or "dataset" in q_lower or "data feed" in q_lower:
+            if SourceType.PRIMARY_SOURCE not in targets:
+                targets.append(SourceType.PRIMARY_SOURCE)
         return targets

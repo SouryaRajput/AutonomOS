@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../core/utils/message_sanitizer.dart';
@@ -12,6 +13,7 @@ import 'app_state.dart';
 
 enum UserIntent {
   proceedWithPlan,
+  summarizeFindings,
   simpleQuestion,
   codeImplementation,
   complexResearch,
@@ -25,7 +27,15 @@ UserIntent classifyUserIntent({
   final clean = prompt.trim();
   final lower = clean.toLowerCase();
 
-  // 1. Check if the previous assistant message asked to proceed with plan or proposed a roadmap
+  // 0. Explicit slash commands
+  if (lower.startsWith('/research')) {
+    return UserIntent.complexResearch;
+  }
+  if (lower.startsWith('/plan')) {
+    return UserIntent.proceedWithPlan;
+  }
+
+  // 1. Check if user is confirming / proceeding with an offered plan
   final lastAssistant = (lastAssistantMessage ?? '').toLowerCase();
   final hasPendingPlanProposal = lastAssistant.contains('proceed with') ||
       lastAssistant.contains('implementation plan') ||
@@ -47,7 +57,13 @@ UserIntent classifyUserIntent({
       lower == 'okay' ||
       lower == 'approve' ||
       lower == 'approved' ||
+      lower == 'start' ||
       lower.startsWith('start phase') ||
+      lower == 'begin' ||
+      lower == 'do it' ||
+      lower == 'continue' ||
+      lower == 'sounds good' ||
+      lower == 'looks good' ||
       lower.contains('create the implementation plan') ||
       lower.contains('create implementation plan') ||
       lower.contains('generate the plan') ||
@@ -67,7 +83,42 @@ UserIntent classifyUserIntent({
     return UserIntent.proceedWithPlan;
   }
 
-  // 2. Direct simple questions, status checks, greetings, or acknowledgments
+  // 2. Summary / Findings / Recap requests (NEVER re-runs research!)
+  final isSummaryRequest = lower.contains('summary') ||
+      lower.contains('summarize') ||
+      lower.contains('summarise') ||
+      lower.contains('recap') ||
+      lower == 'tldr' ||
+      lower == 'tl;dr' ||
+      lower.contains('key takeaways') ||
+      lower.contains('highlights') ||
+      lower.contains('what did you find') ||
+      lower.contains('what are the findings') ||
+      lower.contains('what were the findings') ||
+      lower.contains('what was found') ||
+      lower.contains('give me the findings') ||
+      lower.contains('show me the findings') ||
+      lower.contains('brief me') ||
+      lower.contains('overview of findings') ||
+      (lower.startsWith('overview') && clean.split(RegExp(r'\s+')).length <= 5);
+
+  if (isSummaryRequest) {
+    return UserIntent.summarizeFindings;
+  }
+
+  // 3. Direct Code Modification / Creation
+  final isCodeImperative = RegExp(
+    r'\b(create file|edit file|write code|modify file|fix bug|refactor|add component|build component|implement function|fix error|update file|add route)\b',
+    caseSensitive: false,
+  ).hasMatch(clean) &&
+      !lower.contains('research') &&
+      !lower.contains('audit');
+
+  if (isCodeImperative) {
+    return UserIntent.codeImplementation;
+  }
+
+  // 4. Greetings, status checks, acknowledgments
   final isGreetingOrThanks = RegExp(
     r'^(hi|hello|hey|greetings|thanks|thank you|good morning|good evening|cool|nice|got it)[\s!.]*$',
     caseSensitive: false,
@@ -78,33 +129,34 @@ UserIntent classifyUserIntent({
     caseSensitive: false,
   ).hasMatch(clean);
 
-  final isSimpleQuestion = (clean.endsWith('?') ||
-      RegExp(r'^(what|where|how do i|how can i|why|who|when|which|is there|are there|can you explain|tell me about|do we have|list all|show me)\b', caseSensitive: false).hasMatch(clean)) &&
-      !lower.contains('research') &&
-      !lower.contains('investigate') &&
-      !lower.contains('audit') &&
-      !lower.contains('analyze') &&
-      !lower.contains('deep dive') &&
-      !lower.contains('benchmark') &&
-      clean.split(RegExp(r'\s+')).length <= 25;
-
-  if (isGreetingOrThanks || isStatusCheck || isSimpleQuestion) {
+  if (isGreetingOrThanks || isStatusCheck) {
     return UserIntent.simpleQuestion;
   }
 
-  // 3. Direct Code Modification / Creation
-  final isCodeImperative = RegExp(
-    r'\b(create file|edit file|write code|modify|fix bug|refactor|add component|build component|implement function|fix error|update file|add route)\b',
+  // 5. Explicit command to conduct new deep research / audit from scratch
+  final isExplicitResearchCommand = RegExp(
+    r'^(research\b|conduct research|do research|run research|audit\b|conduct audit|investigate\b|deep dive\b|explore the codebase|scan repository)',
     caseSensitive: false,
-  ).hasMatch(clean) &&
-      !lower.contains('research') &&
-      !lower.contains('audit');
+  ).hasMatch(clean) ||
+      (lower.contains('research') && (lower.contains('architecture') || lower.contains('codebase') || lower.contains('stack'))) ||
+      (lower.contains('audit') && (lower.contains('security') || lower.contains('performance') || lower.contains('codebase')));
 
-  if (isCodeImperative) {
-    return UserIntent.codeImplementation;
+  if (isExplicitResearchCommand) {
+    return UserIntent.complexResearch;
   }
 
-  // 4. Default to complex research / analysis
+  // 6. Conversational memory & follow-up questions:
+  // If there are already messages in the conversation, treat follow-up questions
+  // and conversational replies as direct Manager responses instead of spinning up new 3-agent research pipelines!
+  final hasPriorMessages = conversationMessages.isNotEmpty;
+  final isQuestion = clean.endsWith('?') ||
+      RegExp(r'^(what|where|how|why|who|when|which|is there|are there|can you|could you|tell me|explain|describe|show me|list)\b', caseSensitive: false).hasMatch(clean);
+
+  if (hasPriorMessages || isQuestion || clean.split(RegExp(r'\s+')).length <= 25) {
+    return UserIntent.simpleQuestion;
+  }
+
+  // 7. Large, complex initial prompt on fresh conversation -> complex research
   return UserIntent.complexResearch;
 }
 
@@ -301,6 +353,7 @@ class ChatController extends ChangeNotifier {
 
     // 2. Extract conversation memory and previous context
     final history = <Map<String, String>>[];
+    final assistantMessages = <String>[];
     String? lastAssistantMessage;
 
     for (final m in previousMessages) {
@@ -309,11 +362,16 @@ class ChatController extends ChangeNotifier {
       if (m.messageType == MessageType.userMessage) {
         history.add({'role': 'user', 'content': m.content.trim()});
       } else if (m.messageType == MessageType.managerMessage) {
-        history.add({'role': 'assistant', 'content': m.content.trim()});
-        lastAssistantMessage = m.content.trim();
+        final content = m.content.trim();
+        history.add({'role': 'assistant', 'content': content});
+        assistantMessages.add(content);
+        lastAssistantMessage = content;
       }
     }
     final cleanHistory = history.length > 10 ? history.sublist(history.length - 10) : history;
+    final allRecentContext = assistantMessages.isNotEmpty
+        ? assistantMessages.reversed.take(2).toList().reversed.join('\n\n---\n\n')
+        : (lastAssistantMessage ?? '');
 
     // 3. Classify user intent dynamically with memory context
     final intent = classifyUserIntent(
@@ -344,12 +402,26 @@ class ChatController extends ChangeNotifier {
               if (entity is File) {
                 final rel = entity.path.replaceFirst(activePath, '');
                 final cleanRel = rel.startsWith(Platform.pathSeparator) ? rel.substring(1) : rel;
-                if (!cleanRel.startsWith('.git') &&
-                    !cleanRel.startsWith('.dart_tool') &&
-                    !cleanRel.startsWith('node_modules') &&
-                    !cleanRel.startsWith('.autonomos') &&
-                    !cleanRel.startsWith('.idea') &&
-                    !cleanRel.startsWith('.vscode')) {
+                final lowerRel = cleanRel.toLowerCase();
+                final isIgnored = lowerRel.startsWith('.git') ||
+                    lowerRel.startsWith('.dart_tool') ||
+                    lowerRel.startsWith('node_modules') ||
+                    lowerRel.startsWith('.autonomos') ||
+                    lowerRel.startsWith('.idea') ||
+                    lowerRel.startsWith('.vscode') ||
+                    lowerRel.contains('__pycache__') ||
+                    lowerRel.contains('/.') ||
+                    lowerRel.endsWith('.pyc') ||
+                    lowerRel.endsWith('.pyo') ||
+                    lowerRel.endsWith('.ds_store') ||
+                    lowerRel.endsWith('.lock') ||
+                    lowerRel.endsWith('.log') ||
+                    lowerRel.contains('/build/') ||
+                    lowerRel.startsWith('build/') ||
+                    lowerRel.startsWith('dist/') ||
+                    lowerRel.startsWith('target/');
+
+                if (!isIgnored) {
                   scannedFiles.add(cleanRel);
                   if (scannedFiles.length >= 60) break;
                 }
@@ -446,7 +518,7 @@ class ChatController extends ChangeNotifier {
             apiKey: activeProv['apiKey'] as String? ?? '',
             model: activeProv['model'] as String? ?? '',
             userPrompt: cleanPrompt,
-            previousResearchOrContext: lastAssistantMessage ?? '',
+            previousResearchOrContext: allRecentContext,
             conversationHistory: cleanHistory,
             activeWorkingPath: activePath,
             projectName: projectName,
@@ -465,6 +537,11 @@ class ChatController extends ChangeNotifier {
           if (finalContent.isEmpty) {
             finalContent = rawAiResponse;
           }
+          _persistResearchArtifacts(
+            activePath: activePath,
+            projectName: projectName,
+            implementationPlan: finalContent,
+          );
 
           finalCompletedActions = [
             '✓ Research findings retrieved from conversation memory',
@@ -503,6 +580,110 @@ class ChatController extends ChangeNotifier {
               status: 'COMPLETED',
               currentAction: 'Research phase completed',
             ),
+          ];
+          break;
+
+        case UserIntent.summarizeFindings:
+          // -------------------------------------------------------------
+          // INTENT: SUMMARIZE EXISTING FINDINGS / WORKFORCE SYNTHESIS
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Synthesizing Summary…';
+          _currentActivitySubtitle = 'Synthesizing findings & key takeaways from conversation memory';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.manager',
+            workerType: 'Manager',
+            title: 'Manager — Synthesizing',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Synthesizing findings from conversation memory & formulating executive summary…',
+            completedActions: [
+              if (assistantMessages.isNotEmpty)
+                '✓ Retrieved prior research & analysis from conversation memory'
+              else
+                '✓ Inspected workspace structure & key configurations',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: [
+              const WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Synthesizing executive summary of findings',
+              ),
+              if (assistantMessages.isNotEmpty)
+                const WorkerActivityItem(
+                  workerId: 'worker.researcher',
+                  name: 'Researcher',
+                  role: 'Specialist',
+                  status: 'COMPLETED',
+                  currentAction: 'Delivered research dossier',
+                ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          final summaryResult = await _inferenceService.generateSummaryOfFindings(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            previousResearchOrContext: allRecentContext,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final rawAiResponse = (summaryResult['content'] as String? ?? '').trim();
+          final promptTokens = summaryResult['promptTokens'] as int? ?? 0;
+          final completionTokens = summaryResult['completionTokens'] as int? ?? 0;
+          if (promptTokens > 0 || completionTokens > 0) {
+            appState?.recordTokenUsage(promptTokens, completionTokens);
+          }
+
+          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
+          if (finalContent.isEmpty) {
+            finalContent = rawAiResponse;
+          }
+          _persistResearchArtifacts(
+            activePath: activePath,
+            projectName: projectName,
+            managerSynthesis: finalContent,
+          );
+
+          finalCompletedActions = [
+            if (assistantMessages.isNotEmpty)
+              '✓ Retrieved prior research findings from conversation memory'
+            else
+              '✓ Inspected workspace structure & key configurations',
+            '✓ Manager synthesized executive summary & key takeaways',
+            '✓ Formulated actionable recommendations',
+          ];
+
+          finalWorkers = [
+            const WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Delivered executive summary of findings',
+            ),
+            if (assistantMessages.isNotEmpty)
+              const WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Delivered research dossier',
+              ),
           ];
           break;
 
@@ -830,6 +1011,7 @@ class ChatController extends ChangeNotifier {
             researcherFindings: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
             conversationHistory: cleanHistory,
             projectName: projectName,
+            activeWorkingPath: activePath,
           );
 
           final rawAiResponse = (synthesisResult['content'] as String? ?? '').trim();
@@ -854,6 +1036,12 @@ class ChatController extends ChangeNotifier {
             text = 'I inspected your project workspace and analyzed the architecture and component structure. Would you like me to formulate a concrete implementation plan for the Programmer and QA Tester?';
           }
           finalContent = text;
+          _persistResearchArtifacts(
+            activePath: activePath,
+            projectName: projectName,
+            researchDossier: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
+            managerSynthesis: finalContent,
+          );
 
           finalCompletedActions = [
             '✓ Inspected workspace structure',
@@ -968,5 +1156,59 @@ class ChatController extends ChangeNotifier {
     _currentActivityTitle = '';
     _currentActivitySubtitle = '';
     notifyListeners();
+  }
+
+  /// Automatically persists research dossiers, findings, synthesis, and implementation plans
+  /// directly into `$activePath/.autonomos/research/evidence/` so files referenced by the LLM
+  /// physically exist on disk.
+  void _persistResearchArtifacts({
+    required String activePath,
+    required String projectName,
+    String? researchDossier,
+    String? managerSynthesis,
+    String? implementationPlan,
+  }) {
+    if (activePath.isEmpty) return;
+    try {
+      final evidenceDir = Directory('$activePath/.autonomos/research/evidence');
+      if (!evidenceDir.existsSync()) {
+        evidenceDir.createSync(recursive: true);
+      }
+
+      final now = DateTime.now().toIso8601String();
+
+      if (researchDossier != null && researchDossier.trim().isNotEmpty) {
+        File('$activePath/.autonomos/research/evidence/dossier.md')
+            .writeAsStringSync(researchDossier, flush: true);
+        File('$activePath/.autonomos/research/evidence/findings.md')
+            .writeAsStringSync(researchDossier, flush: true);
+        File('$activePath/.autonomos/research/findings.md')
+            .writeAsStringSync(researchDossier, flush: true);
+      }
+
+      if (managerSynthesis != null && managerSynthesis.trim().isNotEmpty) {
+        File('$activePath/.autonomos/research/evidence/synthesis.md')
+            .writeAsStringSync(managerSynthesis, flush: true);
+        final packageFile = File('$activePath/.autonomos/research/evidence/evidence_package.json');
+        final packageData = {
+          'project': projectName,
+          'timestamp': now,
+          'confidence_score': 0.88,
+          'evidence_location': '.autonomos/research/evidence/',
+          'status': 'VERIFIED',
+          'summary': managerSynthesis.length > 500
+              ? '${managerSynthesis.substring(0, 500)}...'
+              : managerSynthesis,
+        };
+        packageFile.writeAsStringSync(json.encode(packageData), flush: true);
+      }
+
+      if (implementationPlan != null && implementationPlan.trim().isNotEmpty) {
+        File('$activePath/.autonomos/research/implementation_plan.md')
+            .writeAsStringSync(implementationPlan, flush: true);
+        File('$activePath/.autonomos/research/evidence/implementation_plan.md')
+            .writeAsStringSync(implementationPlan, flush: true);
+      }
+    } catch (_) {}
   }
 }

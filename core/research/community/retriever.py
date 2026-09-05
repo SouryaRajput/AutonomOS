@@ -288,9 +288,14 @@ class DiscussionThreadRetriever:
     def __init__(
         self,
         providers: Optional[list[DiscussionProvider]] = None,
+        provider: Optional[DiscussionProvider] = None,
         default_limits: Optional[DiscussionRetrievalLimits] = None,
     ):
-        self._providers: list[DiscussionProvider] = list(providers) if providers else []
+        self._providers: list[DiscussionProvider] = []
+        if providers:
+            self._providers.extend(providers)
+        if provider and provider not in self._providers:
+            self._providers.append(provider)
         self._default_limits = default_limits or DiscussionRetrievalLimits()
 
         if not self._providers:
@@ -508,3 +513,64 @@ class DiscussionThreadRetriever:
                 "max_depth_limit": eff_limits.max_reply_depth,
             },
         )
+
+    def expand_discussion_subtree(
+        self,
+        discussion: Discussion,
+        root_comment_id: str,
+        max_comments: int = 50,
+        max_depth: int = 5,
+        timeout_seconds: Optional[float] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> RetrievedDiscussionThread:
+        """
+        Deeply expands a specific comment subtree of a discussion thread by fetching
+        additional descendants and stitching them into the existing thread structure.
+        """
+        start_time = time.perf_counter()
+        provider = self._resolve_provider(platform=discussion.community_context.platform)
+
+        sub_posts = provider.retrieve_comment_subtree(
+            discussion_id=discussion.discussion_id,
+            root_comment_id=root_comment_id,
+            max_comments=max_comments,
+            max_depth=max_depth,
+            timeout_seconds=timeout_seconds,
+            is_cancelled=is_cancelled,
+        )
+
+        added_count = 0
+        for p in sub_posts:
+            if not discussion.thread_structure.has_post(p.post_id):
+                discussion.add_post(p)
+                added_count += 1
+
+        total_posts = discussion.total_posts()
+        depth = discussion.thread_structure.get_thread_depth()
+        orphans = discussion.thread_structure.get_orphan_posts()
+
+        bytes_retrieved = 0
+        if discussion.title:
+            bytes_retrieved += len(discussion.title.encode("utf-8"))
+        for p in discussion.thread_structure.get_all_posts():
+            if p.content:
+                bytes_retrieved += len(p.content.encode("utf-8"))
+
+        elapsed = round(time.perf_counter() - start_time, 4)
+
+        return RetrievedDiscussionThread(
+            discussion=discussion,
+            is_partial=len(sub_posts) >= max_comments,
+            partial_reasons=["subtree_max_comments_reached"] if len(sub_posts) >= max_comments else [],
+            total_posts_retrieved=total_posts,
+            max_depth_retrieved=depth,
+            orphans_count=len(orphans),
+            bytes_retrieved=bytes_retrieved,
+            execution_time_seconds=elapsed,
+            metadata={
+                "expanded_root_comment_id": root_comment_id,
+                "posts_added": added_count,
+                "provider_id": provider.provider_id,
+            },
+        )
+

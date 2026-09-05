@@ -384,6 +384,54 @@ class FakeDiscussionProvider(DiscussionProvider):
             access_status=AccessStatus.PUBLIC,
         )
 
+    def retrieve_comment_subtree(
+        self,
+        discussion_id: str,
+        root_comment_id: str,
+        max_comments: Optional[int] = None,
+        max_depth: Optional[int] = None,
+        timeout_seconds: Optional[float] = None,
+        is_cancelled: Optional[Callable[[], bool]] = None,
+    ) -> list[DiscussionPost]:
+        """
+        Retrieve descendants of root_comment_id within a discussion for deep subtree exploration.
+        """
+        self._apply_fault_injections(
+            target=f"{discussion_id}:{root_comment_id}",
+            operation="retrieve_comment_subtree",
+            timeout_seconds=timeout_seconds,
+            is_cancelled=is_cancelled,
+        )
+        disc = self._discussions.get(discussion_id)
+        if not disc:
+            for d in self._discussions.values():
+                if d.url == discussion_id:
+                    disc = d
+                    break
+        if not disc:
+            raise CommunityDiscussionNotFoundError(
+                discussion_id=discussion_id,
+                message=f"Discussion '{discussion_id}' not found in provider '{self.provider_id}'",
+            )
+
+        subtree_posts = disc.thread_structure.get_subtree(root_comment_id)
+        # Filter by depth relative to root_comment if max_depth provided
+        root_node = disc.thread_structure.get_post(root_comment_id)
+        base_depth = root_node.depth if root_node else 0
+
+        filtered: list[DiscussionPost] = []
+        for p in subtree_posts:
+            if p.post_id == root_comment_id:
+                continue
+            if max_depth is not None and (p.depth - base_depth) > max_depth:
+                continue
+            filtered.append(copy.deepcopy(p))
+            if max_comments is not None and len(filtered) >= max_comments:
+                break
+
+        return filtered
+
+
     # -------------------------------------------------------------------------
     # Realistic Fixture Initialization
     # -------------------------------------------------------------------------

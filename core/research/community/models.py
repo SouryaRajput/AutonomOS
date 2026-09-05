@@ -58,6 +58,7 @@ class CommunityPlatform(str, Enum):
     """
     REDDIT = "reddit"
     GITHUB_DISCUSSIONS = "github_discussions"
+    HACKER_NEWS = "hacker_news"
     STACK_EXCHANGE = "stack_exchange"
     DISCOURSE = "discourse"
     FORUM = "forum"
@@ -238,6 +239,11 @@ class CommunityContext:
 
         if self.category:
             self.category = str(self.category).strip()
+
+    @property
+    def name(self) -> str:
+        """Alias for community_name."""
+        return self.community_name
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -446,6 +452,10 @@ class ThreadStructure:
         """Retrieve post by ID."""
         return self._posts.get(post_id)
 
+    def has_post(self, post_id: str) -> bool:
+        """Check if post exists in thread."""
+        return post_id in self._posts
+
     def get_root_post(self) -> Optional[DiscussionPost]:
         """Retrieve the designated root post if present."""
         if self.root_post_id and self.root_post_id in self._posts:
@@ -468,9 +478,32 @@ class ThreadStructure:
         replies.sort(key=lambda p: (p.created_at, p.post_id))
         return replies
 
+    def get_subtree(self, root_post_id: str) -> list[DiscussionPost]:
+        """
+        Return all descendant posts in the subtree under root_post_id,
+        in deterministic breadth-first traversal order.
+        """
+        if root_post_id not in self._posts:
+            return []
+        descendants: list[DiscussionPost] = []
+        queue = deque([root_post_id])
+        visited = {root_post_id}
+        while queue:
+            curr_id = queue.popleft()
+            for child_id in self._children.get(curr_id, []):
+                if child_id not in visited and child_id in self._posts:
+                    visited.add(child_id)
+                    descendants.append(self._posts[child_id])
+                    queue.append(child_id)
+        return descendants
+
     def get_all_posts(self) -> list[DiscussionPost]:
         """Return all posts currently in thread."""
         return list(self._posts.values())
+
+    def get_comments_only(self) -> list[DiscussionPost]:
+        """Return all comments/replies excluding the root post."""
+        return [p for p in self.get_all_posts() if not p.is_root and p.parent_id is not None]
 
     def get_ancestors(self, post_id: str) -> list[DiscussionPost]:
         """

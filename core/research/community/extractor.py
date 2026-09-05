@@ -319,6 +319,32 @@ class StructuredDiscussion:
         """Retrieve structured post by post ID."""
         return self.posts.get(post_id)
 
+    def total_posts(self) -> int:
+        """Return total count of posts in structured discussion."""
+        return len(self.posts) or self.thread_structure.total_posts()
+
+    def add_post(self, post: Any) -> None:
+        """Add post to structured discussion and update thread structure."""
+        from core.research.community.models import DiscussionPost
+        if isinstance(post, DiscussionPost):
+            self.thread_structure.add_post(post)
+            struct_post = StructuredDiscussionPost(
+                post_id=post.post_id,
+                discussion_id=post.discussion_id,
+                author_id=post.author_id,
+                raw_content=post.content,
+                normalized_text=post.content,
+                parent_id=post.parent_id,
+                depth=post.depth,
+                is_root=post.is_root,
+                engagement=post.engagement,
+                content_checksum=post.content_checksum,
+                created_at=post.created_at,
+            )
+            self.posts[post.post_id] = struct_post
+        elif isinstance(post, StructuredDiscussionPost):
+            self.posts[post.post_id] = post
+
     def to_discussion_source_materials(self) -> list[DiscussionSourceMaterial]:
         """
         Convert structured posts into canonical DiscussionSourceMaterial instances for evidence synthesis.
