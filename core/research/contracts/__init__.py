@@ -8,6 +8,15 @@ from core.research.contracts.evidence import (
     Source,
     compute_sha256,
 )
+from core.research.contracts.intent import (
+    Ambiguity,
+    ClarificationQuestion,
+    EvidenceRequirement,
+    IntentConfidence,
+    ResearchIntent,
+    TemporalScope,
+    VersionScope,
+)
 from core.research.contracts.plan import ResearchPlan
 from core.research.contracts.question import ResearchQuestion
 from core.research.contracts.request import ResearchRequest, ResearchScope
@@ -36,4 +45,11 @@ __all__ = [
     "ResearchKnowledgeGap",
     "ResearchRecommendation",
     "ResearchResult",
+    "ResearchIntent",
+    "IntentConfidence",
+    "Ambiguity",
+    "ClarificationQuestion",
+    "TemporalScope",
+    "VersionScope",
+    "EvidenceRequirement",
 ]

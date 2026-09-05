@@ -165,3 +165,63 @@ class SourceType(str, Enum):
     REPOSITORY = "REPOSITORY"
     PROJECT_MEMORY = "PROJECT_MEMORY"
     OTHER = "OTHER"
+
+
+class IntentType(str, Enum):
+    """
+    Taxonomy of research intent types reflecting what kind of cognitive or analytical
+    inquiry the user/request requires.
+    """
+    DESCRIPTIVE = "DESCRIPTIVE"
+    COMPARATIVE = "COMPARATIVE"
+    EVALUATIVE = "EVALUATIVE"
+    DIAGNOSTIC = "DIAGNOSTIC"
+    IMPLEMENTATION = "IMPLEMENTATION"
+    EXPLORATORY = "EXPLORATORY"
+    VERIFICATION = "VERIFICATION"
+    HISTORICAL = "HISTORICAL"
+    TECHNICAL = "TECHNICAL"
+    DECISION_SUPPORT = "DECISION_SUPPORT"
+
+
+class FreshnessRequirement(str, Enum):
+    """
+    Temporal recency and currency expectations for evidence relevant to the research intent.
+    """
+    STATIC = "STATIC"
+    CURRENT = "CURRENT"
+    RECENT = "RECENT"
+    TIME_RANGE = "TIME_RANGE"
+    POINT_IN_TIME = "POINT_IN_TIME"
+    VERSION_SPECIFIC = "VERSION_SPECIFIC"
+    UNKNOWN = "UNKNOWN"
+
+
+class DesiredOutput(str, Enum):
+    """
+    Expected target format or analytical presentation of the research deliverable.
+    """
+    FACTUAL_ANSWER = "FACTUAL_ANSWER"
+    COMPARISON = "COMPARISON"
+    RECOMMENDATION = "RECOMMENDATION"
+    TECHNICAL_EXPLANATION = "TECHNICAL_EXPLANATION"
+    IMPLEMENTATION_GUIDANCE = "IMPLEMENTATION_GUIDANCE"
+    TIMELINE = "TIMELINE"
+    ROOT_CAUSE = "ROOT_CAUSE"
+    SUMMARY = "SUMMARY"
+    DECISION_BRIEF = "DECISION_BRIEF"
+
+
+class UnderstandingStatus(str, Enum):
+    """
+    Outcome status of the Request Understanding phase.
+    Governs whether the Researcher can proceed to Research Planning or must seek clarification.
+    """
+    UNDERSTANDING = "UNDERSTANDING"                       # In-progress understanding phase
+    RESOLVED = "RESOLVED"                                 # Enough explicit information exists to proceed
+    RESOLVABLE_WITH_INFERENCE = "RESOLVABLE_WITH_INFERENCE" # Acceptable explicit inferences/assumptions made
+    AMBIGUOUS = "AMBIGUOUS"                               # Material ambiguity exists; clarification required
+    INSUFFICIENT = "INSUFFICIENT"                         # Request lacks information to meaningfully plan research
+    CONFLICTING = "CONFLICTING"                           # Contradictory request components / constraints
+    FAILED = "FAILED"                                     # Understanding infrastructure or validation failure
+

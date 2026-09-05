@@ -8,6 +8,15 @@ from core.research.contracts.evidence import (
     Source,
     compute_sha256,
 )
+from core.research.contracts.intent import (
+    Ambiguity,
+    ClarificationQuestion,
+    EvidenceRequirement,
+    IntentConfidence,
+    ResearchIntent,
+    TemporalScope,
+    VersionScope,
+)
 from core.research.contracts.plan import ResearchPlan
 from core.research.contracts.question import ResearchQuestion
 from core.research.contracts.request import ResearchRequest, ResearchScope
@@ -56,7 +65,40 @@ from core.research.evidence.evaluator import EvidenceEvaluator
 from core.research.orchestration.spawner import CrawlerSpawner
 from core.research.orchestration.supervisor import CrawlerSupervisor
 from core.research.planning.decomposer import ResearchDecomposer
+from core.research.planning.extractor import (
+    DeterministicRequestExtractor,
+    ExtractedRequestElements,
+    ExtractionProvenance,
+    ExtractionUncertainty,
+)
+from core.research.planning.intent_classifier import (
+    DeterministicIntentClassifier,
+    IntentClassificationResult,
+    IntentSignal,
+)
+from core.research.planning.normalizer import (
+    NormalizedResearchRequest,
+    ResearchRequestNormalizer,
+)
 from core.research.planning.task_generator import CrawlerTaskGenerator
+from core.research.planning.understanding_engine import (
+    LLMUnderstandingEngine,
+    ProposalValidationResult,
+    ProposalValidator,
+    ResearchIntentProposal,
+    UnderstandingError,
+)
+from core.research.planning.understanding_orchestrator import (
+    RequestUnderstandingOrchestrator,
+    RequestUnderstandingResult,
+    UnderstandingProvenance,
+)
+from core.routing import (
+    RequestDispatcher,
+    RequestRouter,
+    RouteDestination,
+    RoutingDecision,
+)
 from core.research.researcher import Researcher
 from core.research.state.lifecycle import ResearchStateMachine
 from core.research.state.model import ResearchState, StateTransitionRecord
@@ -197,14 +239,18 @@ from core.research.types import (
     CrawlerReportStatus,
     CrawlerStatus,
     CrawlerTaskStatus,
+    DesiredOutput,
     EvidenceSufficiency,
     FactClassification,
+    FreshnessRequirement,
+    IntentType,
     ResearchConfidence,
     ResearchLifecycleState,
     ResearchMode,
     ResearchQuestionStatus,
     ResearchResultStatus,
     SourceType,
+    UnderstandingStatus,
 )
 
 __all__ = [
@@ -222,6 +268,10 @@ __all__ = [
     "EvidenceSufficiency",
     "ResearchResultStatus",
     "SourceType",
+    "IntentType",
+    "FreshnessRequirement",
+    "DesiredOutput",
+    "UnderstandingStatus",
     # Contracts
     "ResearchRequest",
     "ResearchScope",
@@ -239,6 +289,13 @@ __all__ = [
     "ResearchKnowledgeGap",
     "ResearchRecommendation",
     "ResearchResult",
+    "ResearchIntent",
+    "IntentConfidence",
+    "Ambiguity",
+    "ClarificationQuestion",
+    "TemporalScope",
+    "VersionScope",
+    "EvidenceRequirement",
     # Errors
     "ResearchError",
     "InvalidStateTransitionError",
@@ -265,6 +322,28 @@ __all__ = [
     # Planning
     "ResearchDecomposer",
     "CrawlerTaskGenerator",
+    "ResearchRequestNormalizer",
+    "NormalizedResearchRequest",
+    "IntentSignal",
+    "IntentClassificationResult",
+    "DeterministicIntentClassifier",
+    "ExtractionProvenance",
+    "ExtractionUncertainty",
+    "ExtractedRequestElements",
+    "DeterministicRequestExtractor",
+    "ResearchIntentProposal",
+    "ProposalValidationResult",
+    "ProposalValidator",
+    "LLMUnderstandingEngine",
+    "UnderstandingError",
+    "UnderstandingProvenance",
+    "RequestUnderstandingResult",
+    "RequestUnderstandingOrchestrator",
+    # Intelligent Request Routing (Part 1.7)
+    "RouteDestination",
+    "RoutingDecision",
+    "RequestRouter",
+    "RequestDispatcher",
     # Evidence
     "EvidenceCollector",
     "EvidenceEvaluator",
