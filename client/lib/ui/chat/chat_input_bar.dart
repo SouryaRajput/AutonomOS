@@ -7,6 +7,7 @@ import '../../state/app_state.dart';
 import '../../state/chat_controller.dart';
 import 'manager_activity_popup.dart';
 import 'token_usage_dialog.dart';
+import 'review_changes_dialog.dart';
 
 /// Context-aware prompt input bar inspired by Cursor & Claude Code.
 /// Supports Enter to send, Shift+Enter for multiline, and native folder selection.
@@ -73,60 +74,92 @@ class _ChatInputBarState extends State<ChatInputBar> {
           mainAxisSize: MainAxisSize.min,
           children: [
             // 1. Context Status Bar above prompt input
-            Container(
-              margin: const EdgeInsets.only(bottom: AppTokens.space8),
-              padding: const EdgeInsets.symmetric(horizontal: AppTokens.space12, vertical: AppTokens.space6),
-              decoration: BoxDecoration(
-                color: isDark ? AppTokens.darkSurface : AppTokens.lightSurface,
-                borderRadius: AppTokens.borderRadiusMd,
-                border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
-              ),
-              child: Row(
-                children: [
-                  InkWell(
-                    onTap: _pickWorkspaceFolder,
-                    borderRadius: AppTokens.borderRadiusXs,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Icon(Icons.folder_outlined, size: 14, color: AppTokens.brandPrimary),
-                        const SizedBox(width: AppTokens.space6),
-                        Text(
-                          '$shortPath main',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+            AnimatedBuilder(
+              animation: widget.appState.diffService,
+              builder: (context, _) {
+                final diffService = widget.appState.diffService;
+                return Container(
+                  margin: const EdgeInsets.only(bottom: AppTokens.space8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppTokens.space12, vertical: AppTokens.space6),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTokens.darkSurface : AppTokens.lightSurface,
+                    borderRadius: AppTokens.borderRadiusMd,
+                    border: Border.all(color: isDark ? AppTokens.darkBorder : AppTokens.lightBorder),
+                  ),
+                  child: Row(
+                    children: [
+                      InkWell(
+                        onTap: _pickWorkspaceFolder,
+                        borderRadius: AppTokens.borderRadiusXs,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(Icons.folder_outlined, size: 14, color: AppTokens.brandPrimary),
+                            const SizedBox(width: AppTokens.space6),
+                            Text(
+                              '$shortPath ${diffService.branchName}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: isDark ? AppTokens.darkTextPrimary : AppTokens.lightTextPrimary,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Icon(Icons.unfold_more, size: 12, color: isDark ? AppTokens.darkTextMuted : AppTokens.lightTextMuted),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: AppTokens.space10),
+                      Text.rich(
+                        TextSpan(
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                          ),
+                          children: [
+                            TextSpan(
+                              text: '+${diffService.totalAdditions}',
+                              style: const TextStyle(color: AppTokens.diffAdded),
+                            ),
+                            const TextSpan(text: ' '),
+                            TextSpan(
+                              text: '-${diffService.totalDeletions}',
+                              style: const TextStyle(color: AppTokens.diffRemoved),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Spacer(),
+                      InkWell(
+                        onTap: () => ReviewChangesDialog.show(context, diffService),
+                        borderRadius: AppTokens.borderRadiusXs,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: AppTokens.space8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: isDark ? AppTokens.darkElevated : AppTokens.lightBorder,
+                            borderRadius: AppTokens.borderRadiusXs,
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                'Review Changes',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Icon(Icons.keyboard_arrow_down, size: 12, color: isDark ? AppTokens.darkTextMuted : AppTokens.lightTextMuted),
+                            ],
                           ),
                         ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.unfold_more, size: 12, color: isDark ? AppTokens.darkTextMuted : AppTokens.lightTextMuted),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: AppTokens.space10),
-                  const Text('+0 -0', style: TextStyle(fontSize: 11.5, fontFamily: 'monospace', color: AppTokens.diffAdded, fontWeight: FontWeight.bold)),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: AppTokens.space8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isDark ? AppTokens.darkElevated : AppTokens.lightBorder,
-                      borderRadius: AppTokens.borderRadiusXs,
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          'Review Changes',
-                          style: TextStyle(fontSize: 11, color: isDark ? AppTokens.darkTextSecondary : AppTokens.lightTextSecondary),
-                        ),
-                        const SizedBox(width: 4),
-                        Icon(Icons.keyboard_arrow_down, size: 12, color: isDark ? AppTokens.darkTextMuted : AppTokens.lightTextMuted),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
+                );
+              },
             ),
 
             // 2. Chat Input Box with Enter to Send & Shift+Enter for newline

@@ -243,6 +243,16 @@ class ProgrammerWorkspace:
                 f"Workspace execution mismatch: belongs to execution '{self.execution_id}', expected '{execution_id}'."
             )
 
+    @property
+    def workspace_root(self) -> str:
+        """Convenience property returning root_path."""
+        return self.root_path
+
+    @property
+    def is_isolated(self) -> bool:
+        """Check whether workspace is isolated from the main repository."""
+        return self.isolation_mode == WorkspaceIsolationMode.ISOLATED
+
     def is_path_allowed(self, path: str) -> bool:
         """Check whether a relative path is within allowed read/inspection scope."""
         norm = normalize_workspace_path(path)

@@ -204,6 +204,80 @@ class CodingAgentEventType(str, Enum):
     EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
 
 
+class ProgrammerExecutionEventType(str, Enum):
+    """Normalized taxonomy of execution events emitted during a Programmer execution."""
+    EXECUTION_STARTED = "EXECUTION_STARTED"
+    AGENT_MESSAGE = "AGENT_MESSAGE"
+    FILE_OPERATION = "FILE_OPERATION"
+    COMMAND_OPERATION = "COMMAND_OPERATION"
+    PROGRESS = "PROGRESS"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    EXECUTION_COMPLETED = "EXECUTION_COMPLETED"
+    EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
+
+
+class VerificationStatus(str, Enum):
+    """
+    Authoritative 5-state verification outcome for AutonomOS verification checks and summaries.
+    These states are strictly distinct and non-collapsible.
+    """
+    PASS = "PASS"
+    FAIL = "FAIL"
+    NOT_RUN = "NOT_RUN"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    ERROR = "ERROR"
+
+
+class VerificationCheckType(str, Enum):
+    """Categorization of concrete verification checks executed or evaluated by AutonomOS."""
+    TEST = "TEST"
+    COMMAND = "COMMAND"
+    LINT = "LINT"
+    TYPECHECK = "TYPECHECK"
+    BUILD = "BUILD"
+    STATIC_ANALYSIS = "STATIC_ANALYSIS"
+    CUSTOM = "CUSTOM"
+
+
+class VerificationEvidenceSourceType(str, Enum):
+    """Source classification of captured verification evidence, separating actual execution observation from agent claims."""
+    COMMAND_OUTPUT = "COMMAND_OUTPUT"
+    TEST_RUNNER = "TEST_RUNNER"
+    FILESYSTEM = "FILESYSTEM"
+    PROCESS_EXIT = "PROCESS_EXIT"
+    STATIC_ANALYSIS = "STATIC_ANALYSIS"
+    EXTERNAL_EVALUATION = "EXTERNAL_EVALUATION"
+    AGENT_CLAIM = "AGENT_CLAIM"
+
+
+class VerificationSummaryStatus(str, Enum):
+    """
+    Authoritative 4-state overall verification outcome produced by VerificationEvidenceAggregator.
+    Deterministic, auditable, and non-collapsible.
+    """
+    VERIFIED = "VERIFIED"
+    PARTIALLY_VERIFIED = "PARTIALLY_VERIFIED"
+    FAILED = "FAILED"
+    UNVERIFIED = "UNVERIFIED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        if val_str in ("PASS", "SUCCESS", "VERIFIED"):
+            return cls.VERIFIED
+        if val_str in ("FAIL", "FAILURE", "ERROR", "FAILED"):
+            return cls.FAILED
+        if val_str in ("PARTIAL", "PARTIALLY_PASSED", "PARTIALLY_VERIFIED"):
+            return cls.PARTIALLY_VERIFIED
+        if val_str in ("NOT_VERIFIED", "UNVERIFIED", "NOT_RUN", "UNKNOWN"):
+            return cls.UNVERIFIED
+        return None
+
+
+
+
+
 
 
 

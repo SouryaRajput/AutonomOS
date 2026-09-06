@@ -13,9 +13,14 @@ TRACE_ID_PREFIX = "ptrace-"
 RESULT_ID_PREFIX = "pres-"
 BLOCKER_ID_PREFIX = "pblk-"
 WORKSPACE_ID_PREFIX = "pws-"
+PROGRAMMER_EVENT_ID_PREFIX = "pevt-"
 BACKEND_REQUEST_ID_PREFIX = "cbreq-"
 BACKEND_EVENT_ID_PREFIX = "cbevt-"
 BACKEND_RESULT_ID_PREFIX = "cbres-"
+VERIFICATION_CHECK_ID_PREFIX = "vchk-"
+VERIFICATION_EVIDENCE_ID_PREFIX = "vevid-"
+DIFF_VERIFICATION_ID_PREFIX = "vdiff-"
+ITERATION_ID_PREFIX = "piter-"
 
 ALL_PROGRAMMER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -24,9 +29,14 @@ ALL_PROGRAMMER_PREFIXES = (
     RESULT_ID_PREFIX,
     BLOCKER_ID_PREFIX,
     WORKSPACE_ID_PREFIX,
+    PROGRAMMER_EVENT_ID_PREFIX,
     BACKEND_REQUEST_ID_PREFIX,
     BACKEND_EVENT_ID_PREFIX,
     BACKEND_RESULT_ID_PREFIX,
+    VERIFICATION_CHECK_ID_PREFIX,
+    VERIFICATION_EVIDENCE_ID_PREFIX,
+    DIFF_VERIFICATION_ID_PREFIX,
+    ITERATION_ID_PREFIX,
 )
 
 # Regex patterns: prefix followed by non-empty alphanumeric / hyphen string
@@ -76,6 +86,31 @@ def new_blocker_id() -> str:
 def new_workspace_id() -> str:
     """Generate unique identifier for a ProgrammerWorkspace."""
     return f"{WORKSPACE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_programmer_event_id() -> str:
+    """Generate unique identifier for a ProgrammerExecutionEvent."""
+    return f"{PROGRAMMER_EVENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_programmer_event_id(event_id: str) -> None:
+    """
+    Validate that event_id starts with 'pevt-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(event_id, str) or not event_id.startswith(PROGRAMMER_EVENT_ID_PREFIX) or len(event_id) <= len(PROGRAMMER_EVENT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="event_id",
+            identifier_value=str(event_id),
+            expected_prefix=PROGRAMMER_EVENT_ID_PREFIX,
+        )
+    suffix = event_id[len(PROGRAMMER_EVENT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="event_id",
+            identifier_value=str(event_id),
+            expected_prefix=PROGRAMMER_EVENT_ID_PREFIX,
+        )
 
 
 
@@ -220,8 +255,109 @@ def validate_backend_request_id(request_id: str) -> None:
         )
 
 
+def new_verification_check_id() -> str:
+    """Generate unique identifier for a VerificationCheck."""
+    return f"{VERIFICATION_CHECK_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_verification_evidence_id() -> str:
+    """Generate unique identifier for a VerificationEvidence."""
+    return f"{VERIFICATION_EVIDENCE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_verification_check_id(check_id: str) -> None:
+    """
+    Validate that check_id starts with 'vchk-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(check_id, str) or not check_id.startswith(VERIFICATION_CHECK_ID_PREFIX) or len(check_id) <= len(VERIFICATION_CHECK_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="check_id",
+            identifier_value=str(check_id),
+            expected_prefix=VERIFICATION_CHECK_ID_PREFIX,
+        )
+    suffix = check_id[len(VERIFICATION_CHECK_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="check_id",
+            identifier_value=str(check_id),
+            expected_prefix=VERIFICATION_CHECK_ID_PREFIX,
+        )
+
+
+def validate_verification_evidence_id(evidence_id: str) -> None:
+    """
+    Validate that evidence_id starts with 'vevid-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(evidence_id, str) or not evidence_id.startswith(VERIFICATION_EVIDENCE_ID_PREFIX) or len(evidence_id) <= len(VERIFICATION_EVIDENCE_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="evidence_id",
+            identifier_value=str(evidence_id),
+            expected_prefix=VERIFICATION_EVIDENCE_ID_PREFIX,
+        )
+    suffix = evidence_id[len(VERIFICATION_EVIDENCE_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="evidence_id",
+            identifier_value=str(evidence_id),
+            expected_prefix=VERIFICATION_EVIDENCE_ID_PREFIX,
+        )
+
+
+def new_diff_verification_id() -> str:
+    """Generate unique identifier for a DiffVerification."""
+    return f"{DIFF_VERIFICATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_diff_verification_id(verification_id: str) -> None:
+    """
+    Validate that verification_id starts with 'vdiff-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(verification_id, str) or not verification_id.startswith(DIFF_VERIFICATION_ID_PREFIX) or len(verification_id) <= len(DIFF_VERIFICATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="verification_id",
+            identifier_value=str(verification_id),
+            expected_prefix=DIFF_VERIFICATION_ID_PREFIX,
+        )
+    suffix = verification_id[len(DIFF_VERIFICATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="verification_id",
+            identifier_value=str(verification_id),
+            expected_prefix=DIFF_VERIFICATION_ID_PREFIX,
+        )
+
+
+def new_iteration_id() -> str:
+    """Generate unique identifier for a CorrectionIterationRecord."""
+    return f"{ITERATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_iteration_id(iteration_id: str) -> None:
+    """
+    Validate that iteration_id starts with 'piter-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(iteration_id, str) or not iteration_id.startswith(ITERATION_ID_PREFIX) or len(iteration_id) <= len(ITERATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="iteration_id",
+            identifier_value=str(iteration_id),
+            expected_prefix=ITERATION_ID_PREFIX,
+        )
+    suffix = iteration_id[len(ITERATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="iteration_id",
+            identifier_value=str(iteration_id),
+            expected_prefix=ITERATION_ID_PREFIX,
+        )
+
+
 def is_programmer_id(identifier: str) -> bool:
     """Check whether a given identifier belongs to the Programmer subsystem domain."""
     if not isinstance(identifier, str):
         return False
     return any(identifier.startswith(prefix) for prefix in ALL_PROGRAMMER_PREFIXES)
+

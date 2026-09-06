@@ -44,6 +44,8 @@ class ProgrammerLifecycle:
             ProgrammerExecutionStatus.COMPLETED,
             ProgrammerExecutionStatus.FAILED,
             ProgrammerExecutionStatus.CANCELLED,
+            ProgrammerExecutionStatus.VERIFYING,
+            ProgrammerExecutionStatus.RUNNING,
         },
         ProgrammerExecutionStatus.BLOCKED: {
             ProgrammerExecutionStatus.RUNNING,      # Resumed upon Manager decision/clarification

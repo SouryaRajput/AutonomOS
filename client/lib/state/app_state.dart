@@ -22,6 +22,7 @@ import '../services/provider_storage.dart';
 import '../services/workspace_storage.dart';
 import '../services/conversation_storage.dart';
 import '../services/token_storage.dart';
+import '../services/workspace_diff_service.dart';
 
 enum AppTab {
   home,
@@ -115,6 +116,8 @@ class AppState extends ChangeNotifier {
   ChatConversation? _activeConversation;
   ChatConversation? get activeConversation => _activeConversation;
 
+  final WorkspaceDiffService diffService = WorkspaceDiffService();
+
   String _activeWorkingPath = WorkspaceStorage.loadActiveWorkspace() ?? '';
   String get activeWorkingPath => _activeWorkingPath.isNotEmpty
       ? _activeWorkingPath
@@ -125,6 +128,7 @@ class AppState extends ChangeNotifier {
     if (cleanPath.isEmpty) return;
     _activeWorkingPath = cleanPath;
     WorkspaceStorage.saveActiveWorkspace(_activeWorkingPath);
+    diffService.updateActivePath(_activeWorkingPath);
     final dirName = cleanPath.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last;
     _selectedProject = Project(
       id: 'proj-${dirName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-')}',
@@ -176,6 +180,10 @@ class AppState extends ChangeNotifier {
     artifactRepo = ArtifactRepository(apiClient);
     deepLinkNavigator = DeepLinkNavigator(this);
 
+    if (_activeWorkingPath.isNotEmpty) {
+      diffService.updateActivePath(_activeWorkingPath);
+    }
+
     init();
   }
 
@@ -186,6 +194,7 @@ class AppState extends ChangeNotifier {
       final savedWorkspace = WorkspaceStorage.loadActiveWorkspace();
       if (savedWorkspace != null && savedWorkspace.isNotEmpty && Directory(savedWorkspace).existsSync()) {
         _activeWorkingPath = savedWorkspace;
+        diffService.updateActivePath(_activeWorkingPath);
         final dirName = savedWorkspace.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last;
         _selectedProject = Project(
           id: 'proj-${dirName.toLowerCase().replaceAll(RegExp(r'[^a-z0-9]'), '-')}',
@@ -204,8 +213,10 @@ class AppState extends ChangeNotifier {
         if (_projects.isNotEmpty) {
           _selectedProject = _projects.first;
           _activeWorkingPath = _selectedProject!.rootPath;
+          diffService.updateActivePath(_activeWorkingPath);
           await _loadProjectContext();
         } else {
+          diffService.updateActivePath(_activeWorkingPath);
           await _loadProjectContext();
         }
       }

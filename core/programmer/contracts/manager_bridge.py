@@ -459,6 +459,12 @@ class ProgrammerManagerBridge:
                 elif execution.status == ProgrammerExecutionStatus.VERIFYING:
                     execution.transition_to(ProgrammerExecutionStatus.COMPLETING, "Completing execution")
                 execution.transition_to(ProgrammerExecutionStatus.COMPLETED, "Work order completed successfully")
+            elif result.status == ProgrammerResultStatus.BLOCKED or execution.status == ProgrammerExecutionStatus.BLOCKED:
+                if execution.status != ProgrammerExecutionStatus.BLOCKED:
+                    execution.transition_to(ProgrammerExecutionStatus.BLOCKED, reason=result.summary or "Execution blocked")
+            elif result.status == ProgrammerResultStatus.CANCELLED or execution.status == ProgrammerExecutionStatus.CANCELLED:
+                if execution.status != ProgrammerExecutionStatus.CANCELLED:
+                    execution.cancel(requested_by="manager", reason=result.summary or "Execution cancelled")
             else:
                 execution.transition_to(ProgrammerExecutionStatus.FAILED, reason=result.summary or "Execution failed")
 
@@ -483,6 +489,40 @@ class ProgrammerManagerBridge:
                 worker_id=execution.worker_id,
                 source=EventSource.WORKER,
             )
+        elif result.status == ProgrammerResultStatus.BLOCKED or execution.status == ProgrammerExecutionStatus.BLOCKED:
+            self.emit_event(
+                event_type=EventType.PROGRAMMER_BLOCKED,
+                payload={
+                    "execution_id": execution.execution_id,
+                    "work_order_id": work_order.work_order_id,
+                    "result_id": result.result_id,
+                    "reason": "; ".join(result.material_blockers or result.blockers) if (result.material_blockers or result.blockers) else result.summary,
+                    "status": result.status.value if hasattr(result.status, "value") else str(result.status),
+                },
+                project_id=execution.project_id,
+                task_id=execution.task_id,
+                correlation_id=execution.correlation_id,
+                causation_id=causation_id,
+                worker_id=execution.worker_id,
+                source=EventSource.WORKER,
+            )
+        elif result.status == ProgrammerResultStatus.CANCELLED or execution.status == ProgrammerExecutionStatus.CANCELLED:
+            self.emit_event(
+                event_type=EventType.PROGRAMMER_CANCELLED,
+                payload={
+                    "execution_id": execution.execution_id,
+                    "work_order_id": work_order.work_order_id,
+                    "result_id": result.result_id,
+                    "reason": result.summary or "Execution cancelled",
+                    "status": result.status.value if hasattr(result.status, "value") else str(result.status),
+                },
+                project_id=execution.project_id,
+                task_id=execution.task_id,
+                correlation_id=execution.correlation_id,
+                causation_id=causation_id,
+                worker_id=execution.worker_id,
+                source=EventSource.WORKER,
+            )
         else:
             self.emit_event(
                 event_type=EventType.PROGRAMMER_FAILED,
@@ -492,7 +532,7 @@ class ProgrammerManagerBridge:
                     "result_id": result.result_id,
                     "error": result.summary or "Programmer execution failed",
                     "reason": "; ".join(result.material_blockers or result.blockers) if (result.material_blockers or result.blockers) else result.summary,
-                    "status": result.status.value,
+                    "status": result.status.value if hasattr(result.status, "value") else str(result.status),
                 },
                 project_id=execution.project_id,
                 task_id=execution.task_id,

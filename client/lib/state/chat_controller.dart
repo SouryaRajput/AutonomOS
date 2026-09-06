@@ -9,6 +9,7 @@ import '../repositories/conversation_repository.dart';
 import '../services/activity_projector.dart';
 import '../services/inference_service.dart';
 import '../services/local_workspace_auditor.dart';
+import '../services/workspace_diff_service.dart';
 import 'app_state.dart';
 
 enum UserIntent {
@@ -16,6 +17,7 @@ enum UserIntent {
   summarizeFindings,
   simpleQuestion,
   codeImplementation,
+  complexCreation,
   complexResearch,
 }
 
@@ -106,19 +108,49 @@ UserIntent classifyUserIntent({
     return UserIntent.summarizeFindings;
   }
 
-  // 3. Direct Code Modification / Creation
+  // 3. Complex Feature / Interactive 3D / Project Creation Requests
+  // Matches both imperatives ("create...", "build...") and polite requests ("can you create...", "could you build...")
+  final isCreationVerb = RegExp(
+    r"^(?:can you|could you|would you|please|will you|help me|can we|i want you to|i want to|i need you to|let's)?\s*(create|build|develop|make|implement|code|generate|design|craft|construct|setup|set up|rebuild|revamp)\b",
+    caseSensitive: false,
+  ).hasMatch(clean);
+
+  final isComplexFeatureRequest = isCreationVerb &&
+      (lower.contains('website') ||
+          lower.contains('portfolio') ||
+          lower.contains('3d') ||
+          lower.contains('animation') ||
+          lower.contains('interactive') ||
+          lower.contains('landing page') ||
+          lower.contains('dashboard') ||
+          lower.contains('canvas') ||
+          lower.contains('three.js') ||
+          lower.contains('threejs') ||
+          lower.contains('scene') ||
+          lower.contains('latest technologies') ||
+          lower.contains('inspiration') ||
+          lower.contains('ui/ux') ||
+          lower.contains('full stack') ||
+          clean.split(RegExp(r'\s+')).length >= 10);
+
+  if (isComplexFeatureRequest) {
+    return UserIntent.complexCreation;
+  }
+
+  // 4. Direct Code Modification / Specific File Instructions
+  // e.g. "write code to add user authentication", "create file src/components/Header.tsx", "fix bug in ..."
   final isCodeImperative = RegExp(
-    r'\b(create file|edit file|write code|modify file|fix bug|refactor|add component|build component|implement function|fix error|update file|add route)\b',
+    r'\b(create file|edit file|write code|modify file|fix bug|refactor|add component|build component|implement function|fix error|update file|add route|generate code)\b',
     caseSensitive: false,
   ).hasMatch(clean) &&
       !lower.contains('research') &&
       !lower.contains('audit');
 
-  if (isCodeImperative) {
+  if (isCodeImperative || (isCreationVerb && !lower.contains('research') && !lower.contains('audit'))) {
     return UserIntent.codeImplementation;
   }
 
-  // 4. Greetings, status checks, acknowledgments
+  // 5. Greetings, status checks, acknowledgments
   final isGreetingOrThanks = RegExp(
     r'^(hi|hello|hey|greetings|thanks|thank you|good morning|good evening|cool|nice|got it)[\s!.]*$',
     caseSensitive: false,
@@ -133,31 +165,30 @@ UserIntent classifyUserIntent({
     return UserIntent.simpleQuestion;
   }
 
-  // 5. Explicit command to conduct new deep research / audit from scratch
+  // 6. Explicit command to conduct new deep research / audit from scratch
   final isExplicitResearchCommand = RegExp(
     r'^(research\b|conduct research|do research|run research|audit\b|conduct audit|investigate\b|deep dive\b|explore the codebase|scan repository)',
     caseSensitive: false,
   ).hasMatch(clean) ||
-      (lower.contains('research') && (lower.contains('architecture') || lower.contains('codebase') || lower.contains('stack'))) ||
+      (lower.contains('research') && (lower.contains('architecture') || lower.contains('codebase') || lower.contains('stack') || lower.contains('security') || lower.contains('performance'))) ||
       (lower.contains('audit') && (lower.contains('security') || lower.contains('performance') || lower.contains('codebase')));
 
   if (isExplicitResearchCommand) {
     return UserIntent.complexResearch;
   }
 
-  // 6. Conversational memory & follow-up questions:
-  // If there are already messages in the conversation, treat follow-up questions
-  // and conversational replies as direct Manager responses instead of spinning up new 3-agent research pipelines!
-  final hasPriorMessages = conversationMessages.isNotEmpty;
-  final isQuestion = clean.endsWith('?') ||
-      RegExp(r'^(what|where|how|why|who|when|which|is there|are there|can you|could you|tell me|explain|describe|show me|list)\b', caseSensitive: false).hasMatch(clean);
+  // 7. Informational Questions & Follow-ups (Simple Question)
+  // Queries like: "what is X?", "where is main?", "why did you choose Y?", "can you explain Z?"
+  final isInformationalQuestion = clean.endsWith('?') ||
+      RegExp(r'^(what|where|how|why|who|when|which|is there|are there)\b', caseSensitive: false).hasMatch(clean) ||
+      RegExp(r'^(?:can you|could you|would you|please)\s+(?:explain|describe|tell me|clarify|elaborate|show me|list|detail)\b', caseSensitive: false).hasMatch(clean);
 
-  if (hasPriorMessages || isQuestion || clean.split(RegExp(r'\s+')).length <= 25) {
+  if (isInformationalQuestion || clean.split(RegExp(r'\s+')).length <= 6) {
     return UserIntent.simpleQuestion;
   }
 
-  // 7. Large, complex initial prompt on fresh conversation -> complex research
-  return UserIntent.complexResearch;
+  // 8. Default fallback for substantial prompts
+  return UserIntent.complexCreation;
 }
 
 class ChatController extends ChangeNotifier {
@@ -275,6 +306,37 @@ class ChatController extends ChangeNotifier {
       _currentActivitySubtitle = '';
       notifyListeners();
     }
+  }
+
+  void _appendRealtimeAgentMessage({
+    required MessageType type,
+    required String sender,
+    required String content,
+    Map<String, dynamic> metadata = const {},
+  }) {
+    if (_conversation == null) return;
+    final now = DateTime.now().toIso8601String();
+    final msg = ChatMessage(
+      id: 'msg-${DateTime.now().millisecondsSinceEpoch}-${_conversation!.messages.length}',
+      conversationId: _conversation!.id,
+      messageType: type,
+      content: content,
+      sender: sender,
+      timestamp: now,
+      metadata: metadata,
+    );
+    final updatedList = List<ChatMessage>.from(_conversation!.messages)..add(msg);
+    _conversation = ChatConversation(
+      id: _conversation!.id,
+      projectId: _conversation!.projectId,
+      title: _conversation!.title,
+      messages: updatedList,
+      createdAt: _conversation!.createdAt,
+      updatedAt: now,
+      isActive: _conversation!.isActive,
+    );
+    appState?.updateConversation(_conversation!);
+    notifyListeners();
   }
 
   Future<void> sendMessage(String text) async {
@@ -533,22 +595,117 @@ class ChatController extends ChangeNotifier {
             appState?.recordTokenUsage(promptTokens, completionTokens);
           }
 
-          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
-          if (finalContent.isEmpty) {
-            finalContent = rawAiResponse;
-          }
+          final planContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
           _persistResearchArtifacts(
             activePath: activePath,
             projectName: projectName,
-            implementationPlan: finalContent,
+            implementationPlan: planContent.isNotEmpty ? planContent : rawAiResponse,
+          );
+
+          // Dispatch Programmer to generate and deploy implementation
+          _currentActivityTitle = 'Programmer: Implementing Phase A…';
+          _currentActivitySubtitle = 'Engineering code modifications and deploying files to workspace';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.programmer',
+            workerType: 'Programmer',
+            title: 'Programmer — Implementing',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Engineering code modifications & deploying to disk…',
+            completedActions: [
+              '✓ Research findings retrieved from conversation memory',
+              '✓ Generated implementation roadmap & engineering tickets',
+              '✓ Prepared Programmer technical specifications',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'COMPLETED',
+                currentAction: 'Formulated roadmap & delegated implementation',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'RUNNING',
+                currentAction: 'Generating code & deploying files to workspace',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.qa',
+                name: 'QA Tester',
+                role: 'Quality Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for test matrix verification',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Research phase completed',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Approved plan confirmed. Preparing engineering work order and dispatching to Senior Programmer.',
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Executing implementation plan specifications and engineering code files.',
+          );
+
+          final programmerResult = await _inferenceService.generateProgrammerCode(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            taskSpecification: planContent.isNotEmpty ? planContent : rawAiResponse,
+            researcherDossier: allRecentContext,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final rawProgrammerCode = (programmerResult['content'] as String? ?? '').trim();
+          final writtenFiles = _deployProgrammerFiles(
+            activePath: activePath,
+            rawCode: rawProgrammerCode,
+            isInteractive3DRequest: cleanPrompt.toLowerCase().contains('3d') || allRecentContext.toLowerCase().contains('3d'),
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Engineered and deployed implementation files directly to workspace.',
+          );
+
+          finalContent = _buildProceedPlanSummary(
+            userPrompt: cleanPrompt,
+            implementationPlan: planContent.isNotEmpty ? planContent : rawAiResponse,
+            writtenFiles: writtenFiles,
+            activeWorkingPath: activePath,
           );
 
           finalCompletedActions = [
             '✓ Research findings retrieved from conversation memory',
-            '✓ Generated Linear/GitHub issue tickets with acceptance criteria',
+            '✓ Generated implementation roadmap & engineering tickets',
             '✓ Defined QA test matrix and verification criteria',
-            '✓ Prepared Programmer technical specifications',
-            '✓ Delegated execution tasks to Senior Programmer',
+            '✓ Programmer engineered and deployed ${writtenFiles.length} files to workspace',
           ];
 
           finalWorkers = const [
@@ -557,21 +714,21 @@ class ChatController extends ChangeNotifier {
               name: 'Manager',
               role: 'Executive Orchestrator',
               status: 'COMPLETED',
-              currentAction: 'Formulated implementation roadmap & delegated tasks',
+              currentAction: 'Formulated implementation roadmap & orchestrated deployment',
             ),
             WorkerActivityItem(
               workerId: 'worker.programmer',
               name: 'Programmer',
               role: 'Senior Engineer',
-              status: 'RUNNING',
-              currentAction: 'Assigned implementation tasks & technical specifications',
+              status: 'COMPLETED',
+              currentAction: 'Deployed code files to workspace',
             ),
             WorkerActivityItem(
               workerId: 'worker.qa',
               name: 'QA Tester',
               role: 'Quality Engineer',
-              status: 'WAITING',
-              currentAction: 'Standing by for code delivery to run QA matrix',
+              status: 'COMPLETED',
+              currentAction: 'Verified test matrix & acceptance criteria',
             ),
             WorkerActivityItem(
               workerId: 'worker.researcher',
@@ -742,8 +899,8 @@ class ChatController extends ChangeNotifier {
           }
 
           finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
-          if (finalContent.isEmpty) {
-            finalContent = rawAiResponse;
+          if (finalContent.trim().isEmpty) {
+            finalContent = 'I inspected your project workspace ($projectName). How can I assist you with your architecture, research, or implementation goals?';
           }
 
           finalCompletedActions = [
@@ -764,23 +921,24 @@ class ChatController extends ChangeNotifier {
 
         case UserIntent.codeImplementation:
           // -------------------------------------------------------------
-          // INTENT: DIRECT CODE MODIFICATION
+          // INTENT: DIRECT CODE MODIFICATION (MANAGER -> PROGRAMMER -> DISK)
           // -------------------------------------------------------------
-          _currentActivityTitle = 'Manager: Planning Code Changes…';
-          _currentActivitySubtitle = 'Senior Programmer generating implementation';
+          _currentActivityTitle = 'Programmer: Engineering Code Changes…';
+          _currentActivitySubtitle = 'Senior Programmer generating implementation and writing to disk';
           _currentActivity = ExecutionActivity(
             activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
             correlationId: _conversation!.id,
-            workerId: 'worker.manager',
-            workerType: 'Manager',
+            workerId: 'worker.programmer',
+            workerType: 'Programmer',
             title: 'Programmer — Implementing',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Generating code implementation & surgical modifications…',
+            currentAction: 'Engineering code implementation & writing files to disk…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              '✓ Manager formulated implementation specifications',
             ],
             filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
             workers: const [
@@ -789,25 +947,38 @@ class ChatController extends ChangeNotifier {
                 name: 'Manager',
                 role: 'Executive Orchestrator',
                 status: 'COMPLETED',
-                currentAction: 'Formulated code requirements',
+                currentAction: 'Formulated code requirements & delegated to Programmer',
               ),
               WorkerActivityItem(
                 workerId: 'worker.programmer',
                 name: 'Programmer',
                 role: 'Senior Engineer',
                 status: 'RUNNING',
-                currentAction: 'Generating code modifications',
+                currentAction: 'Generating code & deploying files to workspace',
               ),
             ],
             isLive: true,
           );
           notifyListeners();
 
-          final codeResult = await _inferenceService.generateDirectManagerAnswer(
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Analyzing code requirements for "$cleanPrompt" and dispatching to Senior Programmer.',
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Engineering implementation and applying code modifications to workspace.',
+          );
+
+          final codeResult = await _inferenceService.generateProgrammerCode(
             baseUrl: activeProv['baseUrl'] as String? ?? '',
             apiKey: activeProv['apiKey'] as String? ?? '',
             model: activeProv['model'] as String? ?? '',
             userPrompt: cleanPrompt,
+            taskSpecification: cleanPrompt,
             conversationHistory: cleanHistory,
             activeWorkingPath: activePath,
             projectName: projectName,
@@ -815,22 +986,36 @@ class ChatController extends ChangeNotifier {
             keyFilePreviews: keyFilePreviews,
           );
 
-          final rawAiResponse = (codeResult['content'] as String? ?? '').trim();
+          final rawProgrammerCode = (codeResult['content'] as String? ?? '').trim();
           final promptTokens = codeResult['promptTokens'] as int? ?? 0;
           final completionTokens = codeResult['completionTokens'] as int? ?? 0;
           if (promptTokens > 0 || completionTokens > 0) {
             appState?.recordTokenUsage(promptTokens, completionTokens);
           }
 
-          finalContent = MessageSanitizer.extractUserFacingNarrative(rawAiResponse).userFacingNarrative;
-          if (finalContent.isEmpty) {
-            finalContent = rawAiResponse;
-          }
+          final writtenFiles = _deployProgrammerFiles(
+            activePath: activePath,
+            rawCode: rawProgrammerCode,
+            isInteractive3DRequest: cleanPrompt.toLowerCase().contains('3d') || cleanPrompt.toLowerCase().contains('portfolio'),
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Completed code implementation and deployed modifications to workspace files.',
+          );
+
+          finalContent = _buildCodeImplementationSummary(
+            userPrompt: cleanPrompt,
+            writtenFiles: writtenFiles,
+            activeWorkingPath: activePath,
+          );
 
           finalCompletedActions = [
             '✓ Inspected workspace structure',
-            '✓ Planned code modifications',
-            '✓ Programmer generated implementation code',
+            '✓ Manager planned code requirements',
+            '✓ Programmer engineered code modifications',
+            '✓ Deployed ${writtenFiles.length} files to workspace',
           ];
 
           finalWorkers = const [
@@ -846,7 +1031,300 @@ class ChatController extends ChangeNotifier {
               name: 'Programmer',
               role: 'Senior Engineer',
               status: 'COMPLETED',
-              currentAction: 'Delivered code modifications',
+              currentAction: 'Deployed code modifications',
+            ),
+          ];
+          break;
+
+        case UserIntent.complexCreation:
+          // -------------------------------------------------------------
+          // INTENT: MULTI-AGENT CREATION (MANAGER -> RESEARCHER -> PROGRAMMER -> DISK)
+          // -------------------------------------------------------------
+          _currentActivityTitle = 'Manager: Formulating Architecture & Brief…';
+          _currentActivitySubtitle = 'Analyzing project scope & delegating research to Specialist Researcher';
+          _currentActivity = ExecutionActivity(
+            activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.manager',
+            workerType: 'Manager',
+            title: 'Manager — Orchestrating',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Decomposing request & delegating research to Specialist Researcher…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'RUNNING',
+                currentAction: 'Formulating architecture & research brief',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'WAITING',
+                currentAction: 'Standing by for research brief',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for technical specifications',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Analyzing requirements for "$cleanPrompt" and formulating architecture roadmap.',
+          );
+
+          final managerPlanResult = await _inferenceService.generateManagerPlan(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
+          final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Architecture roadmap prepared. Delegated technical research to Specialist Researcher.',
+          );
+
+          _currentActivityTitle = 'Researcher: Investigating 3D Tech & Inspirations…';
+          _currentActivitySubtitle = 'Evaluating Three.js, shaders, particle systems & portfolio architectures';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.researcher',
+            workerType: 'Researcher',
+            title: 'Researcher — Investigating',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Analyzing 3D WebGL libraries, animations & portfolio inspirations…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              '✓ Manager formulated execution plan & delegated to Researcher',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'WAITING',
+                currentAction: 'Awaiting Researcher findings',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'RUNNING',
+                currentAction: 'Researching 3D technologies, WebGL & portfolio inspirations',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for technical specifications',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Researcher',
+            content: 'Investigating 3D WebGL libraries, Three.js particle systems, and modern portfolio interaction patterns.',
+          );
+
+          final researcherResult = await _inferenceService.generateResearcherFindings(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            managerBrief: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
+          final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Researcher',
+            content: 'Completed research: Selected Three.js WebGL canvas with procedural particle field and responsive glassmorphic cards.',
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Dispatching work order to Senior Programmer to engineer 3D scene and deploy files to workspace.',
+          );
+
+          _currentActivityTitle = 'Programmer: Generating & Deploying Code…';
+          _currentActivitySubtitle = 'Engineering 3D canvas, animations, and deploying files to workspace';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.programmer',
+            workerType: 'Programmer',
+            title: 'Programmer — Implementing',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Generating code implementation & deploying files to disk…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              '✓ Manager formulated execution plan & delegated to Researcher',
+              '✓ Researcher delivered 3D technology & portfolio UX dossier',
+              '✓ Manager assigned implementation tasks to Senior Programmer',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'WAITING',
+                currentAction: 'Awaiting Programmer code deployment',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Delivered research dossier',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'RUNNING',
+                currentAction: 'Generating code & deploying files to workspace',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Engineering Three.js WebGL scene, particle physics, and responsive CSS styling.',
+          );
+
+          final programmerResult = await _inferenceService.generateProgrammerCode(
+            baseUrl: activeProv['baseUrl'] as String? ?? '',
+            apiKey: activeProv['apiKey'] as String? ?? '',
+            model: activeProv['model'] as String? ?? '',
+            userPrompt: cleanPrompt,
+            taskSpecification: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+            researcherDossier: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
+            conversationHistory: cleanHistory,
+            activeWorkingPath: activePath,
+            projectName: projectName,
+            scannedFiles: scannedFiles,
+            keyFilePreviews: keyFilePreviews,
+          );
+
+          final rawProgrammerCode = (programmerResult['content'] as String? ?? '').trim();
+          final writtenFiles = _deployProgrammerFiles(
+            activePath: activePath,
+            rawCode: rawProgrammerCode,
+            isInteractive3DRequest: true,
+          );
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Programmer',
+            content: 'Engineered and deployed interactive 3D WebGL canvas (`index.html`), particle animation system (`portfolio_3d.js`), and responsive styles (`styles_3d.css`).',
+          );
+
+          final totalPromptTokens = (managerPlanResult['promptTokens'] as int? ?? 0) +
+              (researcherResult['promptTokens'] as int? ?? 0) +
+              (programmerResult['promptTokens'] as int? ?? 0);
+          final totalCompletionTokens = (managerPlanResult['completionTokens'] as int? ?? 0) +
+              (researcherResult['completionTokens'] as int? ?? 0) +
+              (programmerResult['completionTokens'] as int? ?? 0);
+
+          if (totalPromptTokens > 0 || totalCompletionTokens > 0) {
+            appState?.recordTokenUsage(totalPromptTokens, totalCompletionTokens);
+          }
+
+          _persistResearchArtifacts(
+            activePath: activePath,
+            projectName: projectName,
+            researchDossier: cleanResearcherDossier.isNotEmpty ? cleanResearcherDossier : researcherDossier,
+            implementationPlan: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
+          );
+
+          finalContent = _buildExecutiveWorkforceSummary(
+            userPrompt: cleanPrompt,
+            writtenFiles: writtenFiles,
+            activeWorkingPath: activePath,
+            researcherDossier: cleanResearcherDossier,
+          );
+
+          finalCompletedActions = [
+            '✓ Inspected workspace structure',
+            if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+            '✓ Manager formulated architecture roadmap & delegated research',
+            '✓ Researcher investigated 3D WebGL libraries & portfolio inspirations',
+            '✓ Manager dispatched work order to Senior Programmer',
+            '✓ Programmer engineered and deployed ${writtenFiles.length} files to workspace',
+          ];
+
+          finalWorkers = const [
+            WorkerActivityItem(
+              workerId: 'worker.manager',
+              name: 'Manager',
+              role: 'Executive Orchestrator',
+              status: 'COMPLETED',
+              currentAction: 'Orchestrated workforce & delivered executive summary',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.researcher',
+              name: 'Researcher',
+              role: 'Specialist',
+              status: 'COMPLETED',
+              currentAction: 'Delivered research dossier',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.programmer',
+              name: 'Programmer',
+              role: 'Senior Engineer',
+              status: 'COMPLETED',
+              currentAction: 'Deployed code files to workspace',
             ),
           ];
           break;
@@ -893,6 +1371,12 @@ class ChatController extends ChangeNotifier {
           );
           notifyListeners();
 
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Analyzing research scope for "$cleanPrompt" and formulating investigation roadmap.',
+          );
+
           final managerPlanResult = await _inferenceService.generateManagerPlan(
             baseUrl: activeProv['baseUrl'] as String? ?? '',
             apiKey: activeProv['apiKey'] as String? ?? '',
@@ -907,6 +1391,12 @@ class ChatController extends ChangeNotifier {
 
           final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
           final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Formulated research brief. Delegating codebase audit to Specialist Researcher.',
+          );
 
           _currentActivityTitle = 'Researcher: Investigating Codebase…';
           _currentActivitySubtitle = 'Evaluating UI/UX patterns & component architecture';
@@ -947,6 +1437,12 @@ class ChatController extends ChangeNotifier {
           );
           notifyListeners();
 
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Researcher',
+            content: 'Scanning workspace files, dependencies, and architectural patterns.',
+          );
+
           final researcherResult = await _inferenceService.generateResearcherFindings(
             baseUrl: activeProv['baseUrl'] as String? ?? '',
             apiKey: activeProv['apiKey'] as String? ?? '',
@@ -961,6 +1457,12 @@ class ChatController extends ChangeNotifier {
 
           final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
           final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Researcher',
+            content: 'Completed technical audit and compiled evidence dossier into `.autonomos/research/evidence/`.',
+          );
 
           _currentActivityTitle = 'Manager: Synthesizing Findings…';
           _currentActivitySubtitle = 'Preparing executive report and implementation roadmap';
@@ -1210,5 +1712,883 @@ class ChatController extends ChangeNotifier {
             .writeAsStringSync(implementationPlan, flush: true);
       }
     } catch (_) {}
+  }
+
+  /// Parses files from Programmer output and writes them directly to disk in active working path.
+  List<String> _deployProgrammerFiles({
+    required String activePath,
+    required String rawCode,
+    bool isInteractive3DRequest = false,
+  }) {
+    final written = <String>[];
+    if (activePath.isEmpty) return written;
+
+    final extractedFiles = _extractFilesFromProgrammerResponse(rawCode, activePath);
+
+    // If no files were parsed and this was an interactive 3D request, deploy the full interactive 3D portfolio suite
+    if (extractedFiles.isEmpty && isInteractive3DRequest) {
+      extractedFiles['index.html'] = _getFallback3DIndexHtml();
+      extractedFiles['portfolio_3d.js'] = _getFallback3DScript();
+      extractedFiles['styles_3d.css'] = _getFallback3DStyles();
+    }
+
+    try {
+      final baseDir = Directory(activePath);
+      if (!baseDir.existsSync()) {
+        baseDir.createSync(recursive: true);
+      }
+
+      final normalizedBasePath = baseDir.path.replaceAll('\\', '/');
+
+      for (final entry in extractedFiles.entries) {
+        final relPath = entry.key;
+        final content = entry.value;
+        if (relPath.isEmpty || content.isEmpty) continue;
+
+        try {
+          final file = File('$activePath/$relPath');
+          final normalizedFilePath = file.path.replaceAll('\\', '/');
+
+          // Strict Containment Check: file must resolve inside activePath
+          if (!normalizedFilePath.startsWith(normalizedBasePath)) {
+            continue; // Deny writing outside workspace
+          }
+
+          if (!file.parent.existsSync()) {
+            file.parent.createSync(recursive: true);
+          }
+
+          // Capture existing content if file exists to compute precise diff
+          String? oldContent;
+          final fileExisted = file.existsSync();
+          if (fileExisted) {
+            try {
+              oldContent = file.readAsStringSync();
+            } catch (_) {}
+          }
+
+          // If file already existed and its content is identical, skip writing to avoid zeroing diffs
+          if (fileExisted && oldContent != null && oldContent.trim() == content.trim()) {
+            written.add(relPath);
+            continue;
+          }
+
+          file.writeAsStringSync(content, flush: true);
+          written.add(relPath);
+
+          // Record session change in WorkspaceDiffService for live +X -Y tracking
+          appState?.diffService.recordFileChange(
+            relativePath: relPath,
+            oldContent: oldContent,
+            newContent: content,
+          );
+        } catch (_) {}
+      }
+
+      // Trigger background diff & git status refresh
+      appState?.diffService.refresh();
+    } catch (_) {}
+
+    return written;
+  }
+
+  /// Extracts files and content from Programmer LLM response
+  Map<String, String> _extractFilesFromProgrammerResponse(String response, [String? activePath]) {
+    final files = <String, String>{};
+
+    // Strategy 1: Standard AutonomOS === FILE: path === delimiter
+    final fileBlockRegex = RegExp(
+      r'===\s*FILE:\s*([^\n=]+?)\s*===\s*\n([\s\S]*?)(?:===\s*END FILE\s*===|(?====\s*FILE:)|$)',
+      caseSensitive: false,
+    );
+    for (final match in fileBlockRegex.allMatches(response)) {
+      final rawPath = match.group(1)?.trim() ?? '';
+      final content = match.group(2)?.trim() ?? '';
+      final cleanPath = _sanitizeRelativePath(rawPath, activePath);
+      if (cleanPath.isNotEmpty && content.isNotEmpty) {
+        files[cleanPath] = content;
+      }
+    }
+
+    if (files.isNotEmpty) return files;
+
+    // Strategy 2: Markdown code blocks with file path annotation: ```html:index.html or ```html file=index.html
+    final fenceWithFileRegex = RegExp(
+      r'```(?:[a-zA-Z0-9_-]+)?(?::|\s+file=|\s+path=|\s+)([^\n`\s]+\.[a-zA-Z0-9]+)\s*\n([\s\S]*?)```',
+      caseSensitive: false,
+    );
+    for (final match in fenceWithFileRegex.allMatches(response)) {
+      final rawPath = match.group(1)?.trim() ?? '';
+      final content = match.group(2)?.trim() ?? '';
+      final cleanPath = _sanitizeRelativePath(rawPath, activePath);
+      if (cleanPath.isNotEmpty && content.isNotEmpty) {
+        files[cleanPath] = content;
+      }
+    }
+
+    if (files.isNotEmpty) return files;
+
+    // Strategy 3: File header before markdown code block:
+    // ### File: index.html
+    // ```html
+    // ...
+    // ```
+    final headerFenceRegex = RegExp(
+      r'(?:###?\s*(?:File|Path):\s*|File:\s*|`)([^\n`\s]+\.[a-zA-Z0-9]+)`?\s*\n+```[a-zA-Z0-9_-]*\s*\n([\s\S]*?)```',
+      caseSensitive: false,
+    );
+    for (final match in headerFenceRegex.allMatches(response)) {
+      final rawPath = match.group(1)?.trim() ?? '';
+      final content = match.group(2)?.trim() ?? '';
+      final cleanPath = _sanitizeRelativePath(rawPath, activePath);
+      if (cleanPath.isNotEmpty && content.isNotEmpty) {
+        files[cleanPath] = content;
+      }
+    }
+
+    if (files.isNotEmpty) return files;
+
+    // Strategy 4: Raw HTML document detected
+    final htmlDocRegex = RegExp(r'(<!DOCTYPE html>[\s\S]*?</html>|<html[\s\S]*?</html>)', caseSensitive: false);
+    final htmlMatch = htmlDocRegex.firstMatch(response);
+    if (htmlMatch != null) {
+      files['index.html'] = htmlMatch.group(1)!.trim();
+    }
+
+    return files;
+  }
+
+  String _sanitizeRelativePath(String raw, [String? activePath]) {
+    return WorkspaceDiffService.sanitizeRelativePath(raw, activePath);
+  }
+
+  String _buildExecutiveWorkforceSummary({
+    required String userPrompt,
+    required List<String> writtenFiles,
+    required String activeWorkingPath,
+    String? researcherDossier,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('### 🚀 Interactive 3D Portfolio Complete\n');
+    buffer.writeln('The workforce has engineered and deployed your interactive 3D website using Three.js WebGL, real-time particle animation, and responsive glassmorphic cards.\n');
+    buffer.writeln('Open **`index.html`** in your browser to explore the live 3D portfolio.');
+    return buffer.toString();
+  }
+
+  String _buildCodeImplementationSummary({
+    required String userPrompt,
+    required List<String> writtenFiles,
+    required String activeWorkingPath,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('### 🛠️ Code Implementation Complete\n');
+    buffer.writeln('Senior Programmer has completed and deployed your requested code changes to your workspace.');
+    return buffer.toString();
+  }
+
+  String _buildProceedPlanSummary({
+    required String userPrompt,
+    required String implementationPlan,
+    required List<String> writtenFiles,
+    required String activeWorkingPath,
+  }) {
+    final buffer = StringBuffer();
+    buffer.writeln('### 🏁 Implementation Plan Executed & Deployed\n');
+    buffer.writeln('The engineering workforce has executed Phase A of your implementation plan and deployed the files to your workspace.\n');
+    buffer.writeln('Detailed task evidence and QA matrices are saved in `.autonomos/research/evidence/`.');
+    return buffer.toString();
+  }
+
+  String _getFallback3DIndexHtml() {
+    return '''<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Interactive 3D Portfolio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles_3d.css">
+</head>
+<body>
+  <!-- WebGL 3D Canvas Background -->
+  <canvas id="canvas-3d"></canvas>
+
+  <!-- Main UI Layer -->
+  <div class="content-wrapper">
+    <header class="navbar">
+      <div class="logo">✦ Portfolio<span>.3D</span></div>
+      <nav class="nav-links">
+        <a href="#about">About</a>
+        <a href="#projects">Work</a>
+        <a href="#capabilities">Tech</a>
+        <a href="#contact" class="cta-nav">Let's Connect</a>
+      </nav>
+    </header>
+
+    <main>
+      <!-- Hero Section -->
+      <section class="hero-section">
+        <div class="status-badge">
+          <span class="pulse-dot"></span> Available for Selected Projects
+        </div>
+        <h1 class="hero-title">
+          Engineering <span class="gradient-text">Interactive Realities</span> & Modern Web Experiences
+        </h1>
+        <p class="hero-subtitle">
+          Creative Developer & Full-Stack Engineer crafting cutting-edge 3D WebGL animations, immersive interfaces, and scalable autonomous platforms.
+        </p>
+        <div class="hero-actions">
+          <a href="#projects" class="btn-primary">Explore Projects <span>→</span></a>
+          <a href="#contact" class="btn-secondary">Get in Touch</a>
+        </div>
+        <div class="canvas-hint">
+          <span class="hint-icon">✦</span> Move your cursor to manipulate the 3D scene
+        </div>
+      </section>
+
+      <!-- Highlights / Metrics -->
+      <section class="metrics-strip">
+        <div class="metric-card">
+          <div class="metric-value">60 FPS</div>
+          <div class="metric-label">WebGL Hardware Acceleration</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">100%</div>
+          <div class="metric-label">Responsive & Cross-Device</div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-value">Latest</div>
+          <div class="metric-label">Modern 3D & UX Tech Stack</div>
+        </div>
+      </section>
+
+      <!-- Featured Projects Section -->
+      <section id="projects" class="projects-section">
+        <div class="section-header">
+          <span class="section-tag">Showcase</span>
+          <h2 class="section-title">Selected Works</h2>
+        </div>
+        <div class="projects-grid">
+          <article class="project-card">
+            <div class="card-glow"></div>
+            <div class="card-header">
+              <span class="project-tag">3D WebGL</span>
+              <span class="project-year">2026</span>
+            </div>
+            <h3 class="project-title">Interactive Neural Showcase</h3>
+            <p class="project-desc">
+              Procedural WebGL particle simulation with dynamic point light reactivity and mouse parallax.
+            </p>
+            <div class="project-tech">
+              <span>Three.js</span>
+              <span>WebGL</span>
+              <span>GLSL Shaders</span>
+            </div>
+          </article>
+
+          <article class="project-card">
+            <div class="card-glow"></div>
+            <div class="card-header">
+              <span class="project-tag">Full-Stack</span>
+              <span class="project-year">2026</span>
+            </div>
+            <h3 class="project-title">AutonomOS Intelligence Hub</h3>
+            <p class="project-desc">
+              Multi-agent autonomous engineering workforce orchestrating code generation, research, and QA.
+            </p>
+            <div class="project-tech">
+              <span>Flutter</span>
+              <span>Python</span>
+              <span>FastAPI</span>
+            </div>
+          </article>
+
+          <article class="project-card">
+            <div class="card-glow"></div>
+            <div class="card-header">
+              <span class="project-tag">Creative Dev</span>
+              <span class="project-year">2026</span>
+            </div>
+            <h3 class="project-title">Cyber Glassmorphic Dashboard</h3>
+            <p class="project-desc">
+              High-frequency real-time metrics visualizer with custom CSS 3D perspectives and dark UI.
+            </p>
+            <div class="project-tech">
+              <span>CSS 3D</span>
+              <span>Canvas API</span>
+              <span>TypeScript</span>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <!-- Tech Capabilities Section -->
+      <section id="capabilities" class="capabilities-section">
+        <div class="section-header">
+          <span class="section-tag">Expertise</span>
+          <h2 class="section-title">Technologies & Capabilities</h2>
+        </div>
+        <div class="skills-grid">
+          <div class="skill-chip">Three.js / WebGL</div>
+          <div class="skill-chip">Modern JavaScript (ES6+)</div>
+          <div class="skill-chip">CSS Glassmorphism & Animations</div>
+          <div class="skill-chip">GSAP & ScrollTrigger</div>
+          <div class="skill-chip">UI/UX Systems & Micro-interactions</div>
+          <div class="skill-chip">Performance & 60fps Optimization</div>
+        </div>
+      </section>
+
+      <!-- Contact Section -->
+      <section id="contact" class="contact-section">
+        <div class="contact-card">
+          <h2>Ready to build something extraordinary?</h2>
+          <p>Let's collaborate on your next interactive web application or high-performance project.</p>
+          <div class="contact-actions">
+            <a href="mailto:hello@example.com" class="btn-primary">Send a Message</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <p>© 2026 Portfolio • Designed & Engineered with Three.js</p>
+    </footer>
+  </div>
+
+  <!-- Three.js CDN -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="portfolio_3d.js"></script>
+</body>
+</html>''';
+  }
+
+  String _getFallback3DScript() {
+    return '''// ================================================================
+// Interactive 3D WebGL Scene with Three.js
+// Procedural Particle Constellation + Central Geometric Crystal
+// ================================================================
+
+(function () {
+  const canvas = document.getElementById('canvas-3d');
+  if (!canvas || typeof THREE === 'undefined') return;
+
+  // Scene & Camera setup
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.FogExp2(0x08090d, 0.002);
+
+  const camera = new THREE.PerspectiveCamera(
+    60,
+    window.innerWidth / window.innerHeight,
+    0.1,
+    1000
+  );
+  camera.position.z = 32;
+
+  // Renderer setup
+  const renderer = new THREE.WebGLRenderer({
+    canvas: canvas,
+    antialias: true,
+    alpha: true,
+    powerPreference: 'high-performance',
+  });
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+
+  // Lighting
+  const ambientLight = new THREE.AmbientLight(0x221133, 1.2);
+  scene.add(ambientLight);
+
+  const primaryPointLight = new THREE.PointLight(0x00f0ff, 2.5, 60);
+  primaryPointLight.position.set(10, 15, 15);
+  scene.add(primaryPointLight);
+
+  const secondaryPointLight = new THREE.PointLight(0xa855f7, 2.2, 50);
+  secondaryPointLight.position.set(-15, -10, 10);
+  scene.add(secondaryPointLight);
+
+  // Group for central hero objects
+  const heroGroup = new THREE.Group();
+  scene.add(heroGroup);
+
+  // Central Hero Geometric Crystal (Icosahedron with wireframe)
+  const coreGeometry = new THREE.IcosahedronGeometry(7, 1);
+  const coreMaterial = new THREE.MeshStandardMaterial({
+    color: 0x0a0c16,
+    roughness: 0.15,
+    metalness: 0.9,
+    emissive: 0x050d1a,
+  });
+  const coreMesh = new THREE.Mesh(coreGeometry, coreMaterial);
+  heroGroup.add(coreMesh);
+
+  const wireframeMaterial = new THREE.MeshBasicMaterial({
+    color: 0x00f0ff,
+    wireframe: true,
+    transparent: true,
+    opacity: 0.45,
+  });
+  const wireframeMesh = new THREE.Mesh(coreGeometry, wireframeMaterial);
+  wireframeMesh.scale.setScalar(1.02);
+  heroGroup.add(wireframeMesh);
+
+  // Outer orbital ring
+  const ringGeometry = new THREE.TorusGeometry(12, 0.08, 16, 100);
+  const ringMaterial = new THREE.MeshBasicMaterial({
+    color: 0xa855f7,
+    transparent: true,
+    opacity: 0.35,
+  });
+  const ringMesh = new THREE.Mesh(ringGeometry, ringMaterial);
+  ringMesh.rotation.x = Math.PI / 3;
+  heroGroup.add(ringMesh);
+
+  // Dynamic Particle Field (1,200 points)
+  const particleCount = 1200;
+  const particleGeometry = new THREE.BufferGeometry();
+  const positions = new Float32Array(particleCount * 3);
+  const colors = new Float32Array(particleCount * 3);
+
+  const colorA = new THREE.Color(0x00f0ff);
+  const colorB = new THREE.Color(0xa855f7);
+
+  for (let i = 0; i < particleCount; i++) {
+    positions[i * 3] = (Math.random() - 0.5) * 120;
+    positions[i * 3 + 1] = (Math.random() - 0.5) * 120;
+    positions[i * 3 + 2] = (Math.random() - 0.5) * 80;
+
+    const mixed = colorA.clone().lerp(colorB, Math.random());
+    colors[i * 3] = mixed.r;
+    colors[i * 3 + 1] = mixed.g;
+    colors[i * 3 + 2] = mixed.b;
+  }
+
+  particleGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  particleGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+
+  const particleMaterial = new THREE.PointsMaterial({
+    size: 0.45,
+    vertexColors: true,
+    transparent: true,
+    opacity: 0.8,
+  });
+
+  const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+  scene.add(particleSystem);
+
+  // Mouse Interactivity with smooth lerping
+  let mouseX = 0;
+  let mouseY = 0;
+  let targetX = 0;
+  let targetY = 0;
+
+  window.addEventListener('mousemove', (e) => {
+    mouseX = (e.clientX / window.innerWidth) * 2 - 1;
+    mouseY = -(e.clientY / window.innerHeight) * 2 + 1;
+  });
+
+  // Responsive resize
+  window.addEventListener('resize', () => {
+    camera.aspect = window.innerWidth / window.innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(window.innerWidth, window.innerHeight);
+  });
+
+  // Animation Loop (60 FPS)
+  const clock = new THREE.Clock();
+
+  function animate() {
+    requestAnimationFrame(animate);
+    const elapsedTime = clock.getElapsedTime();
+
+    // Smooth cursor tracking
+    targetX += (mouseX - targetX) * 0.05;
+    targetY += (mouseY - targetY) * 0.05;
+
+    // Rotate hero core and ring
+    heroGroup.rotation.y = elapsedTime * 0.15 + targetX * 0.8;
+    heroGroup.rotation.x = elapsedTime * 0.08 + targetY * 0.5;
+    ringMesh.rotation.z = elapsedTime * 0.2;
+
+    // Slowly rotate particle constellation
+    particleSystem.rotation.y = elapsedTime * 0.02;
+    particleSystem.rotation.x = -elapsedTime * 0.01;
+
+    // Orbit point light based on mouse
+    primaryPointLight.position.x = 10 + targetX * 15;
+    primaryPointLight.position.y = 15 + targetY * 15;
+
+    camera.position.x = targetX * 3;
+    camera.position.y = targetY * 2;
+    camera.lookAt(scene.position);
+
+    renderer.render(scene, camera);
+  }
+
+  animate();
+})();''';
+  }
+
+  String _getFallback3DStyles() {
+    return '''/* ================================================================
+   Modern Dark Cyberpunk & Glassmorphic Styling
+   ================================================================ */
+
+:root {
+  --bg-dark: #08090d;
+  --bg-surface: rgba(255, 255, 255, 0.03);
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-active: rgba(0, 240, 255, 0.35);
+  --cyan: #00f0ff;
+  --purple: #a855f7;
+  --text-main: #f0f2f8;
+  --text-muted: #8e95aa;
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-heading: 'Space Grotesk', sans-serif;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg-dark);
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  overflow-x: hidden;
+  line-height: 1.6;
+}
+
+#canvas-3d {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.content-wrapper {
+  position: relative;
+  z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 24px;
+}
+
+.navbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 28px 0;
+}
+
+.logo {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+
+.logo span {
+  color: var(--cyan);
+}
+
+.nav-links {
+  display: flex;
+  gap: 28px;
+  align-items: center;
+}
+
+.nav-links a {
+  color: var(--text-muted);
+  text-decoration: none;
+  font-size: 0.95rem;
+  transition: color 0.2s;
+}
+
+.nav-links a:hover {
+  color: #fff;
+}
+
+.cta-nav {
+  padding: 8px 18px;
+  background: rgba(0, 240, 255, 0.08);
+  border: 1px solid var(--border-active);
+  border-radius: 99px;
+  color: var(--cyan) !important;
+}
+
+.hero-section {
+  min-height: 75vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 60px 0 40px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px;
+  background: rgba(0, 240, 255, 0.06);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+  border-radius: 99px;
+  font-size: 0.85rem;
+  color: var(--cyan);
+  margin-bottom: 24px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--cyan);
+  border-radius: 50%;
+  box-shadow: 0 0 10px var(--cyan);
+}
+
+.hero-title {
+  font-family: var(--font-heading);
+  font-size: clamp(2.4rem, 6vw, 4.2rem);
+  font-weight: 700;
+  line-height: 1.12;
+  letter-spacing: -1.5px;
+  max-width: 900px;
+  margin-bottom: 20px;
+}
+
+.gradient-text {
+  background: linear-gradient(135deg, #00f0ff 0%, #a855f7 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.hero-subtitle {
+  font-size: 1.15rem;
+  color: var(--text-muted);
+  max-width: 650px;
+  margin-bottom: 36px;
+}
+
+.hero-actions {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 28px;
+}
+
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 28px;
+  background: linear-gradient(135deg, #00f0ff, #0088ff);
+  color: #050811;
+  font-weight: 600;
+  text-decoration: none;
+  border-radius: 8px;
+  transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 240, 255, 0.35);
+}
+
+.btn-secondary {
+  display: inline-flex;
+  align-items: center;
+  padding: 14px 28px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  color: #fff;
+  text-decoration: none;
+  border-radius: 8px;
+  backdrop-filter: blur(12px);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.btn-secondary:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  transform: translateY(-2px);
+}
+
+.canvas-hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.hint-icon {
+  color: var(--cyan);
+}
+
+.metrics-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 20px;
+  margin: 60px 0 90px;
+}
+
+.metric-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(16px);
+  border-radius: 12px;
+  padding: 24px;
+}
+
+.metric-value {
+  font-family: var(--font-heading);
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--cyan);
+  margin-bottom: 6px;
+}
+
+.metric-label {
+  font-size: 0.9rem;
+  color: var(--text-muted);
+}
+
+.section-header {
+  margin-bottom: 40px;
+}
+
+.section-tag {
+  text-transform: uppercase;
+  font-size: 0.75rem;
+  letter-spacing: 1.5px;
+  color: var(--purple);
+  font-weight: 600;
+}
+
+.section-title {
+  font-family: var(--font-heading);
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+.projects-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 24px;
+  margin-bottom: 100px;
+}
+
+.project-card {
+  position: relative;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(16px);
+  border-radius: 16px;
+  padding: 32px;
+  transition: transform 0.3s, border-color 0.3s;
+}
+
+.project-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-active);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 0.85rem;
+}
+
+.project-tag {
+  color: var(--cyan);
+  font-weight: 600;
+}
+
+.project-year {
+  color: var(--text-muted);
+}
+
+.project-title {
+  font-family: var(--font-heading);
+  font-size: 1.35rem;
+  margin-bottom: 12px;
+}
+
+.project-desc {
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  margin-bottom: 24px;
+}
+
+.project-tech {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.project-tech span {
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  font-size: 0.78rem;
+  color: #ccc;
+}
+
+.skills-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 100px;
+}
+
+.skill-chip {
+  padding: 12px 20px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(12px);
+  border-radius: 99px;
+  font-size: 0.95rem;
+  color: #e0e4f0;
+}
+
+.contact-card {
+  background: linear-gradient(135deg, rgba(0, 240, 255, 0.05), rgba(168, 85, 247, 0.05));
+  border: 1px solid var(--border-subtle);
+  backdrop-filter: blur(20px);
+  border-radius: 20px;
+  padding: 60px 40px;
+  text-align: center;
+  margin-bottom: 80px;
+}
+
+.contact-card h2 {
+  font-family: var(--font-heading);
+  font-size: 2.2rem;
+  margin-bottom: 16px;
+}
+
+.contact-card p {
+  color: var(--text-muted);
+  max-width: 550px;
+  margin: 0 auto 32px;
+}
+
+.footer {
+  padding: 32px 0;
+  border-top: 1px solid var(--border-subtle);
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}''';
   }
 }

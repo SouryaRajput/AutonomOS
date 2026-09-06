@@ -131,6 +131,11 @@ class DocumentStreamView extends StatelessWidget {
                 initialExpanded: false,
               ),
             ),
+          if (msg.sender.isNotEmpty && msg.sender.toLowerCase() != 'user')
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: _buildWorkerSenderHeader(msg.sender, msg.timestamp, isDark),
+            ),
           ...blocks.map((block) {
             switch (block.type) {
               case _BlockType.heading1:
@@ -187,6 +192,68 @@ class DocumentStreamView extends StatelessWidget {
           }).toList(),
         ],
       ),
+    );
+  }
+
+  Widget _buildWorkerSenderHeader(String sender, String timestamp, bool isDark) {
+    final sLower = sender.toLowerCase();
+    final IconData icon;
+    final Color badgeColor;
+    final String displayName;
+
+    if (sLower.contains('research')) {
+      icon = Icons.travel_explore_rounded;
+      badgeColor = const Color(0xFF38BDF8); // Sky blue
+      displayName = 'RESEARCHER';
+    } else if (sLower.contains('program') || sLower.contains('engineer')) {
+      icon = Icons.terminal_rounded;
+      badgeColor = const Color(0xFF34D399); // Emerald green
+      displayName = 'PROGRAMMER';
+    } else {
+      icon = Icons.hub_rounded;
+      badgeColor = AppTokens.brandPrimary; // Purple
+      displayName = 'MANAGER';
+    }
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            color: badgeColor.withOpacity(0.12),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: badgeColor.withOpacity(0.3), width: 0.8),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 12, color: badgeColor),
+              const SizedBox(width: 4),
+              Text(
+                displayName,
+                style: TextStyle(
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.6,
+                  color: badgeColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+        if (timestamp.isNotEmpty) ...[
+          const SizedBox(width: 8),
+          Text(
+            _formatTime(timestamp),
+            style: TextStyle(
+              fontSize: 10,
+              fontFamily: 'monospace',
+              color: isDark ? const Color(0xFF64748B) : const Color(0xFF94A3B8),
+            ),
+          ),
+        ],
+      ],
     );
   }
 

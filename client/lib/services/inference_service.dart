@@ -265,9 +265,11 @@ class InferenceService {
     }
     buffer.writeln('\nYOUR TASK AS MANAGER:');
     buffer.writeln('1. Answer the user\'s question or message directly, clearly, concisely, and professionally.');
-    buffer.writeln('2. Keep the response minimal, scannable, and high-signal (under 250 words). Avoid giant walls of text or multi-line ASCII art.');
+    buffer.writeln('2. Keep the response minimal, scannable, and high-signal (under 200 words). Avoid giant walls of text or multi-line ASCII art.');
     buffer.writeln('3. Reference workspace files, configurations, and conversation context accurately.');
-    buffer.writeln('4. Respond strictly in pure, natural Markdown text. Never emit <tool_call> or pseudo-function JSON.');
+    buffer.writeln('4. STRICT ROLE INTEGRITY: You are the Executive Orchestrator. You do NOT code directly and do NOT run pseudo-tools.');
+    buffer.writeln('5. NEVER emit XML tool calls or pseudo function blocks: `<function=...>`, `<parameter=...>`, `<tool_call>`, or file-reading tags.');
+    buffer.writeln('6. All workspace files have already been inspected and provided above. Respond strictly in pure, natural Markdown text.');
 
     return await _sendWithHistory(
       uri: uri,
@@ -447,7 +449,8 @@ class InferenceService {
     buffer.writeln('2. Formulate a specific, structured Task Delegation Brief for your Specialist Researcher worker.');
     buffer.writeln('3. Specify exactly which 3-5 technical questions and codebase areas the Researcher must investigate.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
-    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- STRICT ROLE INTEGRITY: You are the Manager. You coordinate the workforce; you do NOT write code or execute pseudo tools.');
+    buffer.writeln('- NEVER output XML tool tags, <function=...>, <parameter=...>, or <tool_call>.');
     buffer.writeln('- All project files and context have already been inspected and supplied above.');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
@@ -494,7 +497,8 @@ class InferenceService {
     buffer.writeln('3. Provide concrete code patterns, library suggestions, UX/UI improvements, performance optimizations, and exact implementation recommendations.');
     buffer.writeln('4. Return a comprehensive Research Findings Dossier in pure Markdown.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
-    buffer.writeln('- Do NOT output any XML tags, tool calls, or pseudo function blocks (e.g. <tool_call>, FUNCTIONS.EXECUTE_SHELL).');
+    buffer.writeln('- STRICT ROLE INTEGRITY: You are the Specialist Researcher. You provide technical research dossiers, architectural blueprints, and library recommendations.');
+    buffer.writeln('- NEVER output XML tool tags, <function=...>, <parameter=...>, or <tool_call>.');
     buffer.writeln('- All project files and context have already been inspected and supplied above.');
     buffer.writeln('- Respond strictly in pure, natural Markdown text.');
 
@@ -537,13 +541,89 @@ class InferenceService {
     buffer.writeln('1. NO CODE DUMPS: Do NOT output code snippets, class schemas (@dataclass), function definitions, or SQL in this response. The Senior Programmer handles code execution in the workspace.');
     buffer.writeln('2. NO ASCII ART OR BOX DIAGRAMS: Do NOT output giant text-box flowcharts (| IDEA | -> | BUILD |) or ASCII directory trees (|-- decisions/). Use concise bullet points or small tables instead.');
     buffer.writeln('3. KEEP IT MINIMAL & HIGH-SIGNAL: Keep the response under 300 words total. Focus strictly on key architectural decisions, identified opportunities, and product impact.');
-    buffer.writeln('4. NO ROBOTIC SYSTEM ARTIFACTS: Do NOT output any XML tags, tool calls, or pseudo function blocks.');
+    buffer.writeln('4. NO ROBOTIC SYSTEM ARTIFACTS: Do NOT output any XML tags, tool calls, or pseudo function blocks: <function=...>, <parameter=...>, <tool_call>.');
     buffer.writeln('\nDELIVER A MINIMAL EXECUTIVE RESPONSE IN CLEAN MARKDOWN:');
     buffer.writeln('1. **Executive Overview**: 2-3 concise sentences summarizing what was investigated and key takeaways.');
     buffer.writeln('2. **Key Findings**: 3-5 high-signal bullet points or a compact table summarizing architectural strengths and UX opportunities.');
     buffer.writeln('3. **Recommended Next Steps**: 2-3 high-level phases described in 1 sentence each.');
     buffer.writeln('4. **Call to Action**: Conclude by asking:');
     buffer.writeln('   "Would you like me to proceed with creating the implementation plan for the Programmer and QA Tester to begin executing Phase A?"');
+
+    return await _sendWithHistory(
+      uri: uri,
+      apiKey: apiKey,
+      model: model,
+      systemPrompt: buffer.toString(),
+      currentPrompt: userPrompt,
+      conversationHistory: conversationHistory,
+    );
+  }
+
+  /// Programmer Phase: Senior Programmer generates production-ready code files for deployment.
+  Future<Map<String, dynamic>> generateProgrammerCode({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+    required String taskSpecification,
+    String? researcherDossier,
+    List<Map<String, String>>? conversationHistory,
+    String? activeWorkingPath,
+    String? projectName,
+    List<String>? scannedFiles,
+    Map<String, String>? keyFilePreviews,
+  }) async {
+    final uri = _getChatUri(baseUrl);
+    final pName = projectName ?? (activeWorkingPath?.split(Platform.pathSeparator).where((s) => s.isNotEmpty).last ?? 'Project');
+
+    final buffer = StringBuffer();
+    buffer.writeln('You are the AutonomOS Senior Programmer (Staff Software Engineer).');
+    buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
+    buffer.writeln('\nROLE & RESPONSIBILITY:');
+    buffer.writeln('You are the dedicated coding engineer in the workforce. You write complete, production-ready, beautiful code and deploy it to workspace files.');
+    buffer.writeln('Objective: "$userPrompt"');
+    buffer.writeln('\nMANAGER WORK ORDER & SPECIFICATION:');
+    buffer.writeln(taskSpecification);
+
+    if (researcherDossier != null && researcherDossier.isNotEmpty) {
+      buffer.writeln('\nSPECIALIST RESEARCHER TECHNICAL DOSSIER & INSPIRATIONS:');
+      buffer.writeln(researcherDossier);
+    }
+
+    if (scannedFiles != null && scannedFiles.isNotEmpty) {
+      buffer.writeln('\nExisting Workspace Files:');
+      for (final f in scannedFiles.take(30)) {
+        buffer.writeln('- `$f`');
+      }
+    }
+
+    if (keyFilePreviews != null && keyFilePreviews.isNotEmpty) {
+      buffer.writeln('\nKey Project File Snippets:');
+      keyFilePreviews.forEach((k, v) {
+        buffer.writeln('--- File: $k ---');
+        buffer.writeln(v);
+      });
+    }
+
+    buffer.writeln('\nIMPLEMENTATION RULES:');
+    buffer.writeln('1. Output COMPLETE, WORKING, PRODUCTION-READY code. Absolutely NO placeholders, NO `// TODO: implement later`, NO truncated blocks.');
+    buffer.writeln('2. If the user requested an interactive 3D website or portfolio:');
+    buffer.writeln('   - Output `index.html`: Complete HTML5 document including Google Fonts, modern styling, Three.js r128 CDN script (`https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js`), full-screen responsive 3D WebGL canvas (`#canvas-3d`), interactive hero section, glassmorphic project cards, skills/experience section, and contact form.');
+    buffer.writeln('   - Output `portfolio_3d.js`: Full Three.js setup with Scene, PerspectiveCamera, WebGLRenderer, animated procedural particle field (1,000+ particles), rotating geometric central crystal (Icosahedron), mouse-move tracking parallax, dynamic lighting, and requestAnimationFrame render loop.');
+    buffer.writeln('   - Output `styles_3d.css`: Dark cyberpunk theme (`#08090d`), glowing neon accents (`#00f0ff`, `#a855f7`), frosted glass cards (`backdrop-filter: blur(16px)`), fluid typography, and responsive media queries.');
+    buffer.writeln('3. FILE FORMAT & WORKSPACE CONVENTION:');
+    buffer.writeln('   - All files must be located strictly inside the target project directory `$activeWorkingPath`.');
+    buffer.writeln('   - Delimit every file with its relative path within the target project (e.g. `=== FILE: index.html ===` or `=== FILE: src/app.js ===`).');
+    buffer.writeln('   - NEVER output absolute paths or paths outside the target project.');
+    buffer.writeln('   - Output format:');
+    buffer.writeln('     === FILE: <relative_path> ===');
+    buffer.writeln('     <full file contents>');
+    buffer.writeln('     === END FILE ===');
+    buffer.writeln('4. STRICT CONSTRAINTS:');
+    buffer.writeln('   - Never emit XML tool tags, <function=...>, <parameter=...>, or pseudo function blocks.');
+    buffer.writeln('   - At the end of your response, write a brief technical summary:');
+    buffer.writeln('     === SUMMARY ===');
+    buffer.writeln('     <Brief 2-3 sentence technical description of files engineered>');
 
     return await _sendWithHistory(
       uri: uri,

@@ -517,12 +517,14 @@ class MockCodingAgentBackend(CodingAgentBackend):
         simulated_status: CodingAgentExecutionStatus = CodingAgentExecutionStatus.COMPLETED,
         simulated_error: Optional[str] = None,
         simulated_events: Optional[list[dict[str, Any]]] = None,
+        execution_hook: Optional[Callable[[CodingAgentRequest], None]] = None,
     ) -> None:
         self._backend_type = backend_type
         self.simulated_output = simulated_output
         self.simulated_status = simulated_status
         self.simulated_error = simulated_error
         self.simulated_events = list(simulated_events or [])
+        self.execution_hook = execution_hook
 
         # Audit history
         self.received_requests: list[CodingAgentRequest] = []
@@ -543,7 +545,11 @@ class MockCodingAgentBackend(CodingAgentBackend):
         request.validate()
         self.received_requests.append(request)
 
-        self._execution_states[request.execution_id] = CodingAgentExecutionStatus.RUNNING
+        is_already_cancelled = (
+            self._execution_states.get(request.execution_id) == CodingAgentExecutionStatus.CANCELLED
+        )
+        if not is_already_cancelled:
+            self._execution_states[request.execution_id] = CodingAgentExecutionStatus.RUNNING
 
         # Emit initial start event
         start_event = CodingAgentEvent(
@@ -558,10 +564,24 @@ class MockCodingAgentBackend(CodingAgentBackend):
         if event_handler:
             event_handler(start_event)
 
+        # Optional execution hook (for simulated capability operations)
+        if self.execution_hook:
+            self.execution_hook(request)
+
         # Emit scripted events
         seq = 2
         for ev_data in self.simulated_events:
-            ev_type = CodingAgentEventType(ev_data.get("type", CodingAgentEventType.PROGRESS_REPORTED.value))
+            raw_t = ev_data.get("type", CodingAgentEventType.PROGRESS_REPORTED.value)
+            if isinstance(raw_t, CodingAgentEventType):
+                ev_type = raw_t
+            elif str(raw_t).upper() in CodingAgentEventType.__members__:
+                ev_type = CodingAgentEventType[str(raw_t).upper()]
+            elif str(raw_t).lower() in ("progress", "step"):
+                ev_type = CodingAgentEventType.PROGRESS_REPORTED
+            elif str(raw_t).lower() in ("message", "say"):
+                ev_type = CodingAgentEventType.MESSAGE_EMITTED
+            else:
+                ev_type = CodingAgentEventType.PROGRESS_REPORTED
             ev = CodingAgentEvent(
                 execution_id=request.execution_id,
                 work_order_id=request.work_order_id,
@@ -578,7 +598,7 @@ class MockCodingAgentBackend(CodingAgentBackend):
         # Check if cancellation was pre-registered or simulated failure
         final_status = self.simulated_status
         err_msg = self.simulated_error
-        if self._execution_states.get(request.execution_id) == CodingAgentExecutionStatus.CANCELLED:
+        if is_already_cancelled or self._execution_states.get(request.execution_id) == CodingAgentExecutionStatus.CANCELLED:
             final_status = CodingAgentExecutionStatus.CANCELLED
             err_msg = "Execution was cancelled."
 
