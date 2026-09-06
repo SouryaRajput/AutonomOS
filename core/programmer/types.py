@@ -113,3 +113,98 @@ class AcceptanceCriterionType(str, Enum):
     BEHAVIOR_DEMONSTRATED = "BEHAVIOR_DEMONSTRATED"
     CUSTOM = "CUSTOM"
 
+
+class WorkspaceIsolationMode(str, Enum):
+    """Execution isolation mode for a Programmer workspace."""
+    SHARED = "SHARED"
+    ISOLATED = "ISOLATED"
+
+
+class WorkspaceProvisioningStatus(str, Enum):
+    """Explicit lifecycle status of a workspace provisioning attempt."""
+    PROVISIONING = "PROVISIONING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class WorkspaceProvisioningErrorCode(str, Enum):
+    """Structured error codes for workspace provisioning failures."""
+    INVALID_WORKSPACE = "INVALID_WORKSPACE"
+    PROJECT_NOT_FOUND = "PROJECT_NOT_FOUND"
+    WORKSPACE_UNAVAILABLE = "WORKSPACE_UNAVAILABLE"
+    PATH_INVALID = "PATH_INVALID"
+    ISOLATION_UNAVAILABLE = "ISOLATION_UNAVAILABLE"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    RESOURCE_FAILURE = "RESOURCE_FAILURE"
+    UNKNOWN = "UNKNOWN"
+
+
+class FilesystemOperation(str, Enum):
+    """Filesystem operations subject to Programmer boundary authorization."""
+    READ = "READ"
+    WRITE = "WRITE"
+    CREATE = "CREATE"
+    DELETE = "DELETE"
+    RENAME = "RENAME"
+
+
+class PathBoundaryScope(str, Enum):
+    """Classification of a path relative to the authorized Programmer workspace boundary."""
+    WRITABLE = "WRITABLE"
+    READ_ONLY = "READ_ONLY"
+    FORBIDDEN = "FORBIDDEN"
+    OUTSIDE_BOUNDARY = "OUTSIDE_BOUNDARY"
+
+
+class CommandDecisionType(str, Enum):
+    """Explicit decision verdict for a command authorization evaluation."""
+    ALLOW = "ALLOW"
+    DENY = "DENY"
+    INVALID = "INVALID"
+
+
+class ExecutionContextStatus(str, Enum):
+    """Lifecycle status of a Programmer execution context."""
+    CREATING = "CREATING"
+    VALIDATING = "VALIDATING"
+    READY = "READY"
+    FAILED = "FAILED"
+
+
+class CodingAgentBackendType(str, Enum):
+    """Supported or pluggable coding agent backend implementations."""
+    CLINE = "CLINE"
+    CODEX = "CODEX"
+    CLAUDE_CODE = "CLAUDE_CODE"
+    CUSTOM = "CUSTOM"
+    MOCK = "MOCK"
+
+
+class CodingAgentExecutionStatus(str, Enum):
+    """Operational status of a coding agent backend execution session."""
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    COMPLETED = "COMPLETED"
+    FAILED = "FAILED"
+    CANCELLED = "CANCELLED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class CodingAgentEventType(str, Enum):
+    """Authoritative taxonomy of events emitted during coding agent execution."""
+    AGENT_STARTED = "AGENT_STARTED"
+    THINKING = "THINKING"
+    TOOL_CALL_REQUESTED = "TOOL_CALL_REQUESTED"
+    TOOL_CALL_COMPLETED = "TOOL_CALL_COMPLETED"
+    MESSAGE_EMITTED = "MESSAGE_EMITTED"
+    PROGRESS_REPORTED = "PROGRESS_REPORTED"
+    CHECKPOINT_SAVED = "CHECKPOINT_SAVED"
+    EXECUTION_COMPLETED = "EXECUTION_COMPLETED"
+    EXECUTION_FAILED = "EXECUTION_FAILED"
+    EXECUTION_CANCELLED = "EXECUTION_CANCELLED"
+
+
+
+
+
+

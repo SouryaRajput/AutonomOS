@@ -12,6 +12,10 @@ EXECUTION_ID_PREFIX = "pexec-"
 TRACE_ID_PREFIX = "ptrace-"
 RESULT_ID_PREFIX = "pres-"
 BLOCKER_ID_PREFIX = "pblk-"
+WORKSPACE_ID_PREFIX = "pws-"
+BACKEND_REQUEST_ID_PREFIX = "cbreq-"
+BACKEND_EVENT_ID_PREFIX = "cbevt-"
+BACKEND_RESULT_ID_PREFIX = "cbres-"
 
 ALL_PROGRAMMER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -19,10 +23,29 @@ ALL_PROGRAMMER_PREFIXES = (
     TRACE_ID_PREFIX,
     RESULT_ID_PREFIX,
     BLOCKER_ID_PREFIX,
+    WORKSPACE_ID_PREFIX,
+    BACKEND_REQUEST_ID_PREFIX,
+    BACKEND_EVENT_ID_PREFIX,
+    BACKEND_RESULT_ID_PREFIX,
 )
 
 # Regex patterns: prefix followed by non-empty alphanumeric / hyphen string
 _ID_PATTERN = re.compile(r"^[a-zA-Z0-9_\-]+$")
+
+
+def new_backend_request_id() -> str:
+    """Generate unique identifier for a CodingAgentRequest."""
+    return f"{BACKEND_REQUEST_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_backend_event_id() -> str:
+    """Generate unique identifier for a CodingAgentEvent."""
+    return f"{BACKEND_EVENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_backend_result_id() -> str:
+    """Generate unique identifier for a CodingAgentResult."""
+    return f"{BACKEND_RESULT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
 
 
 def new_work_order_id() -> str:
@@ -50,6 +73,12 @@ def new_blocker_id() -> str:
     return f"{BLOCKER_ID_PREFIX}{uuid.uuid4().hex[:8]}"
 
 
+def new_workspace_id() -> str:
+    """Generate unique identifier for a ProgrammerWorkspace."""
+    return f"{WORKSPACE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+
 def validate_blocker_id(blocker_id: str) -> None:
     """
     Validate that blocker_id starts with 'pblk-' and conforms to identifier constraints.
@@ -68,6 +97,27 @@ def validate_blocker_id(blocker_id: str) -> None:
             identifier_value=str(blocker_id),
             expected_prefix=BLOCKER_ID_PREFIX,
         )
+
+
+def validate_workspace_id(workspace_id: str) -> None:
+    """
+    Validate that workspace_id starts with 'pws-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(workspace_id, str) or not workspace_id.startswith(WORKSPACE_ID_PREFIX) or len(workspace_id) <= len(WORKSPACE_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="workspace_id",
+            identifier_value=str(workspace_id),
+            expected_prefix=WORKSPACE_ID_PREFIX,
+        )
+    suffix = workspace_id[len(WORKSPACE_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="workspace_id",
+            identifier_value=str(workspace_id),
+            expected_prefix=WORKSPACE_ID_PREFIX,
+        )
+
 
 
 def validate_work_order_id(work_order_id: str) -> None:
@@ -147,6 +197,26 @@ def validate_result_id(result_id: str) -> None:
             identifier_type="result_id",
             identifier_value=str(result_id),
             expected_prefix=RESULT_ID_PREFIX,
+        )
+
+
+def validate_backend_request_id(request_id: str) -> None:
+    """
+    Validate that request_id starts with 'cbreq-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(request_id, str) or not request_id.startswith(BACKEND_REQUEST_ID_PREFIX) or len(request_id) <= len(BACKEND_REQUEST_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="request_id",
+            identifier_value=str(request_id),
+            expected_prefix=BACKEND_REQUEST_ID_PREFIX,
+        )
+    suffix = request_id[len(BACKEND_REQUEST_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="request_id",
+            identifier_value=str(request_id),
+            expected_prefix=BACKEND_REQUEST_ID_PREFIX,
         )
 
 

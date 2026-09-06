@@ -157,3 +157,49 @@ class InvalidBudgetError(ProgrammerValidationError):
         self.budget_type = budget_type
         self.value = value
 
+
+class InvalidWorkspaceError(ProgrammerValidationError):
+    """Raised when a workspace fails boundary, ownership, or isolation validation."""
+
+    def __init__(self, message: str, workspace_id: Optional[str] = None, details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if workspace_id:
+            d["workspace_id"] = workspace_id
+        super().__init__(
+            message=message,
+            field_name="workspace",
+            code="INVALID_WORKSPACE",
+            details=d,
+        )
+        self.workspace_id = workspace_id
+
+
+class WorkspaceProvisioningError(ProgrammerError):
+    """Raised when workspace provisioning fails deterministically."""
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "UNKNOWN",
+        workspace_id: Optional[str] = None,
+        project_id: Optional[str] = None,
+        details: Optional[dict[str, Any]] = None,
+    ):
+        d = dict(details or {})
+        code_str = error_code.value if hasattr(error_code, "value") else str(error_code)
+        d["error_code"] = code_str
+        if workspace_id:
+            d["workspace_id"] = workspace_id
+        if project_id:
+            d["project_id"] = project_id
+        super().__init__(
+            message=message,
+            code=f"WORKSPACE_PROVISIONING_{code_str}",
+            details=d,
+        )
+        self.error_code = error_code
+        self.workspace_id = workspace_id
+        self.project_id = project_id
+
+
+
