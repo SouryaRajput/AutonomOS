@@ -592,6 +592,17 @@ class ActivityProjector:
             title = "Programmer self-review completed"
             description = f"Checks passed: {p.get('checks_passed', True)} | Regression risk: {p.get('regression_risk', 'LOW')}"
 
+        elif t == EventType.PROGRAMMER_REQUESTED:
+            icon = "code_request"
+            title = f"Programmer requested for task: '{p.get('objective', event.task_id)}'"
+            description = f"Work Order: {p.get('work_order_id', 'N/A')}"
+
+        elif t == EventType.PROGRAMMER_BLOCKED:
+            icon = "code_blocked"
+            level = ActivityLevel.WARNING
+            title = f"Programmer blocked: {p.get('reason', 'Execution blocked')}"
+            description = p.get("blocker_id", "")
+
         elif t == EventType.PROGRAMMER_COMPLETED:
             icon = "code_done"
             level = ActivityLevel.SUCCESS
@@ -603,6 +614,12 @@ class ActivityProjector:
             level = ActivityLevel.ERROR
             title = f"Implementation failed: {p.get('error', 'Unknown programming failure')}"
             description = p.get("reason", "")
+
+        elif t == EventType.PROGRAMMER_CANCELLED:
+            icon = "code_cancelled"
+            level = ActivityLevel.INFO
+            title = f"Programmer cancelled: {p.get('reason', 'Task cancelled')}"
+            description = f"Requested by: {p.get('requested_by', 'MANAGER')}"
 
         # Tester Specialist Worker Events (Stage 13)
         elif t == EventType.TESTER_STARTED:

@@ -318,12 +318,35 @@ class WorkforceActivityProjector:
             else:
                 self._add_completed_action(act, "❌ Tests failed — triggering rollback")
 
+        elif t == EventType.PROGRAMMER_REQUESTED:
+            act.worker_type = "Programmer"
+            act.title = "Programmer — Requested"
+            act.status = ActivityStatus.PENDING
+            act.current_action = f"Work order requested: {p.get('work_order_id', 'N/A')}"
+            self._record_worker(act, worker_id="worker.programmer", name="Programmer", role="Specialist", status="REQUESTED")
+
         elif t == EventType.PROGRAMMER_COMPLETED:
             act.status = ActivityStatus.COMPLETED
             act.is_live = False
             act.end_time = event.timestamp
             self._add_completed_action(act, "✓ Code modifications verified")
             act.current_action = "Implementation complete"
+
+        elif t == EventType.PROGRAMMER_BLOCKED:
+            act.status = ActivityStatus.BLOCKED
+            act.current_action = f"Blocked: {p.get('reason', 'Execution blocked')}"
+
+        elif t == EventType.PROGRAMMER_FAILED:
+            act.status = ActivityStatus.FAILED
+            act.is_live = False
+            act.end_time = event.timestamp
+            act.current_action = f"Failed: {p.get('error', 'Execution failed')}"
+
+        elif t == EventType.PROGRAMMER_CANCELLED:
+            act.status = ActivityStatus.CANCELLED
+            act.is_live = False
+            act.end_time = event.timestamp
+            act.current_action = f"Cancelled: {p.get('reason', 'Execution cancelled')}"
 
         # =====================================================================
         # 6. Tester Specialist Events
