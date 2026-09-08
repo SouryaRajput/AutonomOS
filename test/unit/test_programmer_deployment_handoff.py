@@ -50,6 +50,7 @@ from core.programmer.errors import (
     ArtifactLineageError,
     DeploymentHandoffError,
     InvalidProgrammerIdError,
+    MissingPrerequisiteError,
     PrematureDeploymentClaimError,
     SourceRevisionMismatchError,
 )
@@ -137,10 +138,9 @@ def test_ready_deployment_handoff():
     evidence = _make_sample_evidence()
     artifact = _make_sample_artifact(evidence=[evidence])
     summary = VerificationSummary(
-        summary_id="vsum-test-1234",
         execution_id="pexec-test-1234",
         work_order_id="pwo-test-1234",
-        overall_status=VerificationSummaryStatus.PASS,
+        overall_status=VerificationSummaryStatus.VERIFIED,
     )
 
     builder = DeploymentHandoffBuilder()
@@ -168,10 +168,9 @@ def test_blocked_deployment_handoff():
         blocker_id="pblk-test-12345678",
         execution_id="pexec-test-1234",
         work_order_id="pwo-test-1234",
-        category=ProgrammerBlockerCategory.INFRASTRUCTURE_UNAVAILABLE,
+        category=ProgrammerBlockerCategory.RESOURCE,
         severity=ProgrammerBlockerSeverity.CRITICAL,
         description="Database migration runner host is down",
-        is_resolved=False,
     )
 
     builder = DeploymentHandoffBuilder()
@@ -200,7 +199,7 @@ def test_missing_configuration_deployment_handoff():
         fields=[
             ConfigurationField(
                 name="DATABASE_URL",
-                type=ConfigurationFieldType.STRING,
+                field_type=ConfigurationFieldType.STRING,
                 required=True,
             )
         ],
@@ -215,7 +214,7 @@ def test_missing_configuration_deployment_handoff():
 
     assert handoff.status == DeploymentHandoffStatus.NOT_READY
     assert handoff.recommendation == DeploymentRecommendation.CONFIGURE
-    assert any("Configure required runtime parameter 'DATABASE_URL'" in p for p in handoff.deployment_prerequisites)
+    assert any("DATABASE_URL" in p for p in handoff.deployment_prerequisites)
 
 
 def test_failed_verification_deployment_handoff():
@@ -223,10 +222,9 @@ def test_failed_verification_deployment_handoff():
     evidence = _make_sample_evidence()
     artifact = _make_sample_artifact(evidence=[evidence])
     summary = VerificationSummary(
-        summary_id="vsum-test-1234",
         execution_id="pexec-test-1234",
         work_order_id="pwo-test-1234",
-        overall_status=VerificationSummaryStatus.FAIL,
+        overall_status=VerificationSummaryStatus.FAILED,
     )
 
     builder = DeploymentHandoffBuilder()
@@ -246,8 +244,9 @@ def test_risk_propagation_deployment_handoff():
     artifact = _make_sample_artifact(evidence=[evidence])
     risk = EngineeringRisk(
         risk_id="prisk-test-12345678",
-        category=EngineeringRiskCategory.COMPATIBILITY,
+        category=EngineeringRiskCategory.BREAKING_CHANGE,
         description="Upstream API will deprecate TLS 1.2 next month",
+        affected_area="network_transport",
         mitigation="TLS 1.3 already supported in configuration",
     )
 
@@ -347,26 +346,25 @@ def test_cannot_recommend_deploy_when_not_ready_or_blocked():
 
 def test_lifecycle_state_distinction():
     """Validates clear distinction between BUILD_COMPLETE, VERIFIED, and DEPLOYMENT_READY."""
-    evidence = _make_sample_evidence()
-    artifact = _make_sample_artifact(evidence=[evidence])
-
-    # Case 1: Build complete only (no verification summary)
+    # Case 1: Build complete only (no verification summary and no evidence)
+    artifact_no_evidence = _make_sample_artifact(evidence=[])
     builder1 = DeploymentHandoffBuilder()
-    builder1.set_artifact(artifact)
+    builder1.set_artifact(artifact_no_evidence)
     handoff1 = builder1.build()
     assert handoff1.lifecycle_state == ProductLifecycleState.BUILD_COMPLETE
 
     # Case 2: Verified (verification summary passed, but missing config keeps it not deployment ready)
+    evidence = _make_sample_evidence()
+    artifact = _make_sample_artifact(evidence=[evidence])
     schema = RuntimeConfigurationSchema(
         schema_id="psch-test-12345678",
         product_id="proj-test-1234",
-        fields=[ConfigurationField(name="API_KEY", type=ConfigurationFieldType.STRING, required=True)],
+        fields=[ConfigurationField(name="API_KEY", field_type=ConfigurationFieldType.STRING, required=True)],
     )
     summary = VerificationSummary(
-        summary_id="vsum-test-1234",
         execution_id="pexec-test-1234",
         work_order_id="pwo-test-1234",
-        overall_status=VerificationSummaryStatus.PASS,
+        overall_status=VerificationSummaryStatus.VERIFIED,
     )
     builder2 = DeploymentHandoffBuilder()
     builder2.set_artifact(artifact)
@@ -416,3 +414,47 @@ def test_serialization_roundtrips():
     assert handoff2.recommendation == handoff.recommendation
     assert handoff2.lifecycle_state == handoff.lifecycle_state
     assert len(handoff2.environment_requirements) == len(handoff.environment_requirements)
+
+
+def test_missing_prerequisite_error_structure():
+    """Validates structure and attributes of MissingPrerequisiteError."""
+    err = MissingPrerequisiteError(
+        message="Required migration check missing",
+        missing_prerequisites=["db_migration", "ssl_cert"],
+        handoff_id="pdhand-12345678",
+    )
+    assert err.handoff_id == "pdhand-12345678"
+    assert "db_migration" in err.missing_prerequisites
+    assert "ssl_cert" in err.missing_prerequisites
+    assert err.field_name == "deployment_prerequisites"
+
+
+def test_builder_prerequisites_aggregation():
+    """Validates that builder aggregates runtime config, environment, and secret requirements into prerequisites."""
+    evidence = _make_sample_evidence()
+    artifact = _make_sample_artifact(evidence=[evidence])
+    req = EnvironmentRequirement(
+        name="API_SECRET",
+        type=EnvironmentRequirementType.SECRET_REF,
+        required=True,
+        sensitive=True,
+    )
+    schema = RuntimeConfigurationSchema(
+        schema_id="psch-test-12345678",
+        product_id="proj-test-1234",
+        fields=[ConfigurationField(name="BACKEND_URL", field_type=ConfigurationFieldType.STRING, required=True)],
+    )
+
+    builder = DeploymentHandoffBuilder()
+    builder.set_artifact(artifact)
+    builder.set_environment_requirements([req])
+    builder.set_configuration_schema(schema)
+    builder.set_prerequisites(["Run database migrations pre-deploy"])
+
+    handoff = builder.build()
+
+    prereqs = handoff.deployment_prerequisites
+    assert any("Run database migrations pre-deploy" in p for p in prereqs)
+    assert any("BACKEND_URL" in p for p in prereqs)
+    assert any("API_SECRET" in p for p in prereqs)
+

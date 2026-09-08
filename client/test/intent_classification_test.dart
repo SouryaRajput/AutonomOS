@@ -143,7 +143,7 @@ void main() {
     });
 
     test('Never confuses polite creation requests ("Can you create...") with informational questions', () {
-      final prompt = 'Can you create an interactive 3D website in the best and latest technologies for UI/UX, animations, 3D components and make it as good as possible and take inspiration from other insane websites for portfolio out there';
+      const prompt = 'Can you create an interactive 3D website in the best and latest technologies for UI/UX, animations, 3D components and make it as good as possible and take inspiration from other insane websites for portfolio out there';
       final intent = classifyUserIntent(
         prompt: prompt,
         lastAssistantMessage: null,
@@ -153,7 +153,7 @@ void main() {
     });
 
     test('Classifies the user business automation & lead research prompt to complexResearch (NEVER complexCreation)', () {
-      final prompt = 'can you research about what many people complaning about in their businesses which I can automate using softwares and charge them \$500-1000? Can you also find emails/contact details like instagram or reddit profiles of users whom I can pitch to sell because they have a specific issue? also, tell me why you chose those people to pitch. Do not hallucinate';
+      const prompt = 'can you research about what many people complaning about in their businesses which I can automate using softwares and charge them \$500-1000? Can you also find emails/contact details like instagram or reddit profiles of users whom I can pitch to sell because they have a specific issue? also, tell me why you chose those people to pitch. Do not hallucinate';
       final intent = classifyUserIntent(
         prompt: prompt,
         lastAssistantMessage: null,
@@ -186,7 +186,7 @@ void main() {
     });
 
     test('Substantial prompts without coding verbs safely fallback to complexResearch, NEVER complexCreation', () {
-      final prompt = 'I want to explore the commercial dynamics of autonomous AI agents operating in enterprise procurement environments without writing any code right now';
+      const prompt = 'I want to explore the commercial dynamics of autonomous AI agents operating in enterprise procurement environments without writing any code right now';
       final intent = classifyUserIntent(
         prompt: prompt,
         lastAssistantMessage: null,

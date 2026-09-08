@@ -8,7 +8,6 @@ import '../models/execution_activity.dart';
 import '../repositories/conversation_repository.dart';
 import '../services/activity_projector.dart';
 import '../services/inference_service.dart';
-import '../services/local_workspace_auditor.dart';
 import '../services/workspace_diff_service.dart';
 import 'app_state.dart';
 

@@ -152,7 +152,7 @@ class DeploymentReadinessEvaluator:
 
     def evaluate(
         self,
-        artifact: ProductArtifact,
+        artifact: Optional[ProductArtifact] = None,
         build_result: Optional[BuildPackagingResult] = None,
         verification_summary: Optional[VerificationSummary] = None,
         acceptance_criteria: Optional[Sequence[AcceptanceCriterion]] = None,
@@ -181,34 +181,38 @@ class DeploymentReadinessEvaluator:
         # ---------------------------------------------------------------------
         # 1. Inspect Artifact Identity & Lineage
         # ---------------------------------------------------------------------
-        if not artifact.artifact_id:
-            blocking_issues.append("Artifact has no artifact_id.")
-        if not artifact.project_id:
-            blocking_issues.append("Artifact has no project_id.")
-
-        # Source revision inspection
-        if artifact.source_revision is None:
-            insufficient_evidence_reasons.append("Artifact source revision is missing or unspecified.")
+        if artifact is None:
+            blocking_issues.append("No ProductArtifact provided for deployment readiness evaluation.")
+            insufficient_evidence_reasons.append("Artifact is missing or build failed to produce a product artifact.")
         else:
-            commit_hash = getattr(artifact.source_revision, "commit_hash", "")
-            if not commit_hash or len(commit_hash.strip()) < 7:
-                insufficient_evidence_reasons.append("Artifact source revision has missing or invalid commit hash.")
+            if not artifact.artifact_id:
+                blocking_issues.append("Artifact has no artifact_id.")
+            if not artifact.project_id:
+                blocking_issues.append("Artifact has no project_id.")
 
-        # ---------------------------------------------------------------------
-        # 2. Inspect Artifact Existence on Disk
-        # ---------------------------------------------------------------------
-        if not artifact.artifact_reference or not artifact.artifact_reference.strip():
-            blocking_issues.append("ProductArtifact has empty or unspecified artifact_reference.")
-        else:
-            ref = artifact.artifact_reference.strip()
-            if file_exists_fn is not None:
-                if not file_exists_fn(ref):
-                    blocking_issues.append(f"Artifact file does not exist at reference: '{ref}'.")
+            # Source revision inspection
+            if artifact.source_revision is None:
+                insufficient_evidence_reasons.append("Artifact source revision is missing or unspecified.")
             else:
-                # Default filesystem check if absolute or relative file path
-                if ref.startswith("/") or ref.startswith("./"):
-                    if not os.path.exists(ref):
-                        blocking_issues.append(f"Artifact file not found on disk at '{ref}'.")
+                commit_hash = getattr(artifact.source_revision, "commit_hash", "")
+                if not commit_hash or len(commit_hash.strip()) < 7:
+                    insufficient_evidence_reasons.append("Artifact source revision has missing or invalid commit hash.")
+
+            # ---------------------------------------------------------------------
+            # 2. Inspect Artifact Existence on Disk
+            # ---------------------------------------------------------------------
+            if not artifact.artifact_reference or not artifact.artifact_reference.strip():
+                blocking_issues.append("ProductArtifact has empty or unspecified artifact_reference.")
+            else:
+                ref = artifact.artifact_reference.strip()
+                if file_exists_fn is not None:
+                    if not file_exists_fn(ref):
+                        blocking_issues.append(f"Artifact file does not exist at reference: '{ref}'.")
+                else:
+                    # Default filesystem check if absolute or relative file path
+                    if ref.startswith("/") or ref.startswith("./"):
+                        if not os.path.exists(ref):
+                            blocking_issues.append(f"Artifact file not found on disk at '{ref}'.")
 
         # ---------------------------------------------------------------------
         # 3. Inspect Build Status & Build Metadata
@@ -221,7 +225,7 @@ class DeploymentReadinessEvaluator:
             if hasattr(build_result, "exit_code") and build_result.exit_code is not None and build_result.exit_code != 0:
                 blocking_issues.append(f"Build process returned non-zero exit code: {build_result.exit_code}.")
 
-        if artifact.build_metadata:
+        if artifact is not None and artifact.build_metadata:
             exit_code = artifact.build_metadata.get("exit_code")
             if exit_code is not None and exit_code != 0:
                 blocking_issues.append(f"Artifact build metadata indicates build failure with exit code {exit_code}.")
@@ -235,7 +239,7 @@ class DeploymentReadinessEvaluator:
         # 4. Inspect Verification Status & Evidence (Ignoring Agent Claims)
         # ---------------------------------------------------------------------
         # Collect candidate evidence from artifact and arguments
-        candidate_evidence: list[VerificationEvidence] = list(artifact.evidence)
+        candidate_evidence: list[VerificationEvidence] = list(artifact.evidence) if artifact is not None else []
 
         # Filter out Cline's claims ("Do not treat Cline's claims as evidence.")
         for ev in candidate_evidence:
@@ -244,7 +248,7 @@ class DeploymentReadinessEvaluator:
             else:
                 authoritative_evidence.append(ev)
 
-        summary = verification_summary or artifact.verification_summary
+        summary = verification_summary or (artifact.verification_summary if artifact is not None else None)
         if summary is not None:
             if hasattr(summary, "is_failed") and summary.is_failed:
                 blocking_issues.append("Verification summary indicates failing verification checks.")
@@ -308,7 +312,7 @@ class DeploymentReadinessEvaluator:
         # 6. Inspect Configuration Schema & Runtime Configuration
         # ---------------------------------------------------------------------
         target_schema = configuration_schema
-        if target_schema is None and artifact.configuration_schema:
+        if target_schema is None and artifact is not None and artifact.configuration_schema:
             if isinstance(artifact.configuration_schema, RuntimeConfigurationSchema):
                 target_schema = artifact.configuration_schema
             elif isinstance(artifact.configuration_schema, dict) and artifact.configuration_schema:
@@ -337,13 +341,13 @@ class DeploymentReadinessEvaluator:
                     blocking_issues.append(
                         f"Missing required configuration fields with no default values: {missing_without_defaults}."
                     )
-        elif artifact.is_configuration():
+        elif artifact is not None and artifact.is_configuration():
             blocking_issues.append("Configuration artifact lacks a valid RuntimeConfigurationSchema.")
 
         # ---------------------------------------------------------------------
         # 7. Inspect Runtime Requirements & Environment
         # ---------------------------------------------------------------------
-        if artifact.environment_requirements:
+        if artifact is not None and artifact.environment_requirements:
             env_vars = artifact.environment_requirements.get("env_vars", [])
             if isinstance(env_vars, list):
                 for ev in env_vars:
@@ -366,7 +370,7 @@ class DeploymentReadinessEvaluator:
                 if runtime_configuration is not None and req.name in runtime_configuration.values:
                     provided_val = runtime_configuration.values[req.name]
                     is_provided = True
-                elif artifact.environment_requirements and isinstance(artifact.environment_requirements, dict):
+                elif artifact is not None and artifact.environment_requirements and isinstance(artifact.environment_requirements, dict):
                     if req.name in artifact.environment_requirements:
                         provided_val = artifact.environment_requirements[req.name]
                         is_provided = True
@@ -403,7 +407,7 @@ class DeploymentReadinessEvaluator:
                 if req.required and not is_provided:
                     blocking_issues.append(f"Missing required environment requirement: '{req.name}'.")
 
-        if artifact.runtime_requirements:
+        if artifact is not None and artifact.runtime_requirements:
             # E.g. python version, node version, memory
             memory = artifact.runtime_requirements.get("min_memory_mb")
             if memory is not None and isinstance(memory, (int, float)) and memory > 65536:
@@ -413,12 +417,12 @@ class DeploymentReadinessEvaluator:
         # 7b. Scan for Accidental Secret Exposure in Artifact & Evidence
         # ---------------------------------------------------------------------
         # Scan artifact reference
-        if artifact.artifact_reference:
+        if artifact is not None and artifact.artifact_reference:
             for finding in SecretExposureDetector.scan_text(artifact.artifact_reference, location="artifact.artifact_reference"):
                 blocking_issues.append(f"Accidental secret exposure detected in {finding.location}: {finding.secret_type} pattern matched.")
 
         # Scan artifact build metadata
-        if artifact.build_metadata:
+        if artifact is not None and artifact.build_metadata:
             for k, v in artifact.build_metadata.items():
                 if isinstance(v, str):
                     for finding in SecretExposureDetector.scan_text(v, location=f"artifact.build_metadata.{k}"):
@@ -495,10 +499,14 @@ class DeploymentReadinessEvaluator:
             status = DeploymentReadinessStatus.READY
 
         res_id = new_deployment_readiness_id()
+        art_id = artifact.artifact_id if artifact is not None else ""
+        proj_id = (artifact.project_id if artifact is not None else "") or (
+            build_result.artifact.project_id if build_result and getattr(build_result, "artifact", None) else ""
+        )
         return DeploymentReadinessResult(
             readiness_id=res_id,
-            artifact_id=artifact.artifact_id,
-            project_id=artifact.project_id,
+            artifact_id=art_id,
+            project_id=proj_id,
             status=status,
             blocking_issues=blocking_issues,
             warnings=warnings,

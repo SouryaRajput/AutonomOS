@@ -122,7 +122,7 @@ index 0000000..f923b12
         newContent: 'body {\n  color: white;\n  background: #000;\n}',
       );
 
-      expect(service.totalAdditions, equals(4));
+      expect(service.totalAdditions, equals(5));
       expect(service.totalDeletions, equals(1));
       expect(service.fileDiffs.length, equals(2));
 

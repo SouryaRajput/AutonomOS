@@ -652,6 +652,10 @@ class MaliciousConfigurationError(ConfigurationValidationError):
         self.detected_pattern = detected_pattern
 
 
+# Alias for backward/forward compatibility
+ExecutableConfigurationError = MaliciousConfigurationError
+
+
 class PlaintextSensitiveValueError(ConfigurationValidationError):
     """Raised when a sensitive configuration field contains raw plaintext instead of a secret reference."""
 
@@ -741,6 +745,10 @@ class SecretLeakageError(ProgrammerValidationError, ConfigurationError):
         )
         self.secret_type = secret_type
         self.location = location
+
+
+# Alias for backward/forward compatibility
+SecretExposureError = SecretLeakageError
 
 
 class SecretReferenceUnavailableError(ConfigurationValidationError):

@@ -283,6 +283,11 @@ from core.programmer.contracts.deployment_handoff import (
     DeploymentHandoff,
     DeploymentHandoffBuilder,
 )
+from core.programmer.contracts.product_pipeline import (
+    ProductPackagingReadinessPipeline,
+    ProductPipelineRequest,
+    ProductPipelineResult,
+)
 from core.programmer.errors import (
     ArtifactLineageError,
     BuildPackagingError,
@@ -292,6 +297,7 @@ from core.programmer.errors import (
     DeploymentHandoffError,
     DuplicateFeedbackError,
     EnvironmentRequirementError,
+    ExecutableConfigurationError,
     FieldDependencyViolationError,
     ImmutableConfigurationModificationError,
     InvalidArtifactReferenceError,
@@ -311,6 +317,7 @@ from core.programmer.errors import (
     PrematureDeploymentClaimError,
     ProductArtifactError,
     SchemaVersionMismatchError,
+    SecretExposureError,
     SecretLeakageError,
     SecretReferenceUnavailableError,
     SourceRevisionMismatchError,
@@ -801,6 +808,7 @@ __all__ = [
     "InvalidConfigurationValueError",
     "SchemaVersionMismatchError",
     "MaliciousConfigurationError",
+    "ExecutableConfigurationError",
     "PlaintextSensitiveValueError",
     "FieldDependencyViolationError",
     "ImmutableConfigurationModificationError",
@@ -819,6 +827,7 @@ __all__ = [
     "SecretExposureFinding",
     "SecretExposureDetector",
     "EnvironmentRequirementError",
+    "SecretExposureError",
     "SecretLeakageError",
     "SecretReferenceUnavailableError",
     "MissingEnvironmentRequirementError",
@@ -833,6 +842,9 @@ __all__ = [
     "DeploymentHandoffError",
     "PrematureDeploymentClaimError",
     "MissingPrerequisiteError",
+    "ProductPackagingReadinessPipeline",
+    "ProductPipelineRequest",
+    "ProductPipelineResult",
 ]
 
 

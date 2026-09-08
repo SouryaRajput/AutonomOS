@@ -147,17 +147,17 @@ class DeploymentHandoff:
             if self.project_id and self.product_artifact.project_id != self.project_id:
                 raise ArtifactLineageError(
                     f"DeploymentHandoff project_id '{self.project_id}' does not match product_artifact project_id '{self.product_artifact.project_id}'.",
-                    artifact_id=self.product_artifact.artifact_id,
+                    details={"artifact_id": self.product_artifact.artifact_id},
                 )
             if self.work_order_id and self.product_artifact.work_order_id != self.work_order_id:
                 raise ArtifactLineageError(
                     f"DeploymentHandoff work_order_id '{self.work_order_id}' does not match product_artifact work_order_id '{self.product_artifact.work_order_id}'.",
-                    artifact_id=self.product_artifact.artifact_id,
+                    details={"artifact_id": self.product_artifact.artifact_id},
                 )
             if self.execution_id and self.product_artifact.execution_id != self.execution_id:
                 raise ArtifactLineageError(
                     f"DeploymentHandoff execution_id '{self.execution_id}' does not match product_artifact execution_id '{self.product_artifact.execution_id}'.",
-                    artifact_id=self.product_artifact.artifact_id,
+                    details={"artifact_id": self.product_artifact.artifact_id},
                 )
 
         # Verify source revision consistency if both artifact and handoff specify it
@@ -167,8 +167,8 @@ class DeploymentHandoff:
             if handoff_hash and art_hash and handoff_hash != art_hash:
                 raise SourceRevisionMismatchError(
                     f"DeploymentHandoff source_revision commit hash '{handoff_hash}' does not match ProductArtifact revision '{art_hash}'.",
-                    claimed_revision=handoff_hash,
-                    actual_revision=art_hash,
+                    commit_hash=handoff_hash,
+                    expected_hash=art_hash,
                 )
 
         # Safety Check: Cannot recommend DEPLOY if status is NOT_READY or BLOCKED
@@ -300,6 +300,9 @@ class DeploymentHandoffBuilder:
 
     def __init__(self) -> None:
         self._artifact: Optional[ProductArtifact] = None
+        self._project_id: str = ""
+        self._work_order_id: str = ""
+        self._execution_id: str = ""
         self._source_revision: Optional[GitRevision] = None
         self._build_result: Optional[BuildPackagingResult] = None
         self._runtime_requirements: dict[str, Any] = {}
@@ -314,8 +317,20 @@ class DeploymentHandoffBuilder:
         self._readiness_result: Optional[DeploymentReadinessResult] = None
         self._trace: dict[str, Any] = {}
 
-    def set_artifact(self, artifact: ProductArtifact) -> DeploymentHandoffBuilder:
+    def set_artifact(self, artifact: Optional[ProductArtifact]) -> DeploymentHandoffBuilder:
         self._artifact = artifact
+        return self
+
+    def set_project_id(self, project_id: str) -> DeploymentHandoffBuilder:
+        self._project_id = str(project_id or "")
+        return self
+
+    def set_work_order_id(self, work_order_id: str) -> DeploymentHandoffBuilder:
+        self._work_order_id = str(work_order_id or "")
+        return self
+
+    def set_execution_id(self, execution_id: str) -> DeploymentHandoffBuilder:
+        self._execution_id = str(execution_id or "")
         return self
 
     def set_source_revision(self, revision: GitRevision) -> DeploymentHandoffBuilder:
@@ -378,14 +393,21 @@ class DeploymentHandoffBuilder:
         Synthesize all inputs into a validated DeploymentHandoff.
         """
         if self._artifact is None:
-            raise ProgrammerValidationError("DeploymentHandoff requires a ProductArtifact.", field_name="product_artifact")
-
-        # Fallback source_revision from artifact if not set
-        source_rev = self._source_revision or self._artifact.source_revision
+            if not self._project_id or not self._work_order_id:
+                raise ProgrammerValidationError("DeploymentHandoff requires a ProductArtifact or explicit project_id and work_order_id.", field_name="product_artifact")
+            proj_id = self._project_id
+            wo_id = self._work_order_id
+            exec_id = self._execution_id
+            source_rev = self._source_revision
+        else:
+            proj_id = self._project_id or self._artifact.project_id
+            wo_id = self._work_order_id or self._artifact.work_order_id
+            exec_id = self._execution_id or self._artifact.execution_id
+            source_rev = self._source_revision or self._artifact.source_revision
 
         # Compile evidence list from artifact and explicit additions
         all_evidence: list[VerificationEvidence] = list(self._evidence)
-        if self._artifact.evidence:
+        if self._artifact and self._artifact.evidence:
             seen_ids = {getattr(e, "evidence_id", "") for e in all_evidence}
             for e in self._artifact.evidence:
                 eid = getattr(e, "evidence_id", "")
@@ -426,12 +448,15 @@ class DeploymentHandoffBuilder:
         build_ok = False
         if self._build_result is not None:
             build_ok = getattr(self._build_result, "status", None) == BuildPackagingStatus.SUCCESS
-        elif self._artifact.build_metadata:
+        elif self._artifact and self._artifact.build_metadata:
             build_ok = self._artifact.build_metadata.get("status") in ("SUCCESS", BuildPackagingStatus.SUCCESS) or self._artifact.build_metadata.get("exit_code") == 0
 
         verified_ok = False
         if self._verification_summary is not None:
-            verified_ok = getattr(self._verification_summary, "status", None) in (VerificationStatus.PASS, VerificationSummaryStatus.PASS) or getattr(self._verification_summary, "overall_status", None) in (VerificationStatus.PASS, VerificationSummaryStatus.PASS)
+            v_st = getattr(self._verification_summary, "overall_status", getattr(self._verification_summary, "status", None))
+            if v_st is not None:
+                v_str = v_st.value if hasattr(v_st, "value") else str(v_st)
+                verified_ok = v_str.upper() in ("PASS", "VERIFIED", "SUCCESS")
 
         if handoff_status in (DeploymentHandoffStatus.READY, DeploymentHandoffStatus.READY_WITH_WARNINGS):
             lifecycle_state = ProductLifecycleState.DEPLOYMENT_READY
@@ -473,16 +498,16 @@ class DeploymentHandoffBuilder:
 
         return DeploymentHandoff(
             handoff_id=new_deployment_handoff_id(),
-            project_id=self._artifact.project_id,
-            work_order_id=self._artifact.work_order_id,
-            execution_id=self._artifact.execution_id,
+            project_id=proj_id,
+            work_order_id=wo_id,
+            execution_id=exec_id,
             product_artifact=self._artifact,
             source_revision=source_rev,
             build_information=self._build_result,
-            runtime_requirements=dict(self._runtime_requirements or self._artifact.runtime_requirements),
-            configuration_schema=self._configuration_schema or self._artifact.configuration_schema,
+            runtime_requirements=dict(self._runtime_requirements or (self._artifact.runtime_requirements if self._artifact else {})),
+            configuration_schema=self._configuration_schema or (self._artifact.configuration_schema if self._artifact else None),
             environment_requirements=list(self._environment_requirements),
-            verification_summary=self._verification_summary or self._artifact.verification_summary,
+            verification_summary=self._verification_summary or (self._artifact.verification_summary if self._artifact else None),
             acceptance_results=list(self._acceptance_results),
             known_risks=list(self._risks),
             blockers=list(self._blockers),
