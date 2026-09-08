@@ -84,6 +84,8 @@ class ProgrammerPromptBuilder:
         cls,
         work_order: ProgrammerWorkOrder,
         context: ProgrammerExecutionContext,
+        understanding: Optional[Any] = None,
+        plan: Optional[Any] = None,
     ) -> str:
         """
         Construct the deterministic instruction prompt containing all 14 required dimensions.
@@ -311,6 +313,45 @@ class ProgrammerPromptBuilder:
         lines.append(f"  - Risk Level: {risk}")
         lines.append("- Evidence Collection: Collect and report all modified files, test outputs, and diagnostic notes in your execution result.")
 
+        # Dimension 15: Codebase Understanding (Phase 7.1)
+        if understanding:
+            lines.append("")
+            lines.append("# 15. CODEBASE UNDERSTANDING")
+            lines.append(f"Project Type: {getattr(understanding, 'project_type', 'unknown')}")
+            langs = getattr(understanding, 'languages', [])
+            if langs:
+                lines.append(f"Languages: {', '.join(langs)}")
+            fws = getattr(understanding, 'frameworks', [])
+            if fws:
+                lines.append(f"Frameworks: {', '.join(fws)}")
+            eps = getattr(understanding, 'entry_points', [])
+            if eps:
+                lines.append(f"Entry Points: {', '.join(eps)}")
+            locs = getattr(understanding, 'test_locations', [])
+            if locs:
+                lines.append(f"Test Locations: {', '.join(locs)}")
+            convs = getattr(understanding, 'detected_conventions', {})
+            if convs:
+                lines.append("Detected Conventions:")
+                for k, v in convs.items():
+                    lines.append(f"- {k}: {v}")
+
+        # Dimension 16: Implementation Plan (Phase 7.3)
+        if plan:
+            lines.append("")
+            lines.append("# 16. IMPLEMENTATION PLAN")
+            lines.append(f"Objective: {getattr(plan, 'objective', '')}")
+            steps = getattr(plan, 'steps', [])
+            if steps:
+                lines.append("Ordered Steps:")
+                for s in steps:
+                    targets = f" [Targets: {', '.join(s.target_files)}]" if getattr(s, 'target_files', None) else ""
+                    verif = f" [Verify: {s.verification}]" if getattr(s, 'verification', None) else ""
+                    lines.append(f"- [{s.step_id}] ({s.action_type}) {s.description}{targets}{verif}")
+            req_checks = getattr(plan, 'required_checks', [])
+            if req_checks:
+                lines.append(f"Required Checks: {', '.join(req_checks)}")
+
         return "\n".join(lines)
 
     @classmethod
@@ -319,13 +360,20 @@ class ProgrammerPromptBuilder:
         work_order: ProgrammerWorkOrder,
         context: ProgrammerExecutionContext,
         system_prompt_override: Optional[str] = None,
+        understanding: Optional[Any] = None,
+        plan: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> ProgrammerPromptPackage:
         """
         Build a complete ProgrammerPromptPackage containing both system prompt and instruction prompt.
         """
         system_prompt = system_prompt_override or cls.build_system_prompt()
-        prompt = cls.build_instruction_prompt(work_order=work_order, context=context)
+        prompt = cls.build_instruction_prompt(
+            work_order=work_order,
+            context=context,
+            understanding=understanding,
+            plan=plan,
+        )
         return ProgrammerPromptPackage(
             system_prompt=system_prompt,
             prompt=prompt,
@@ -345,16 +393,24 @@ class ProgrammerPromptBuilder:
         model_name: Optional[str] = None,
         timeout_seconds: Optional[int] = None,
         max_iterations: Optional[int] = None,
+        understanding: Optional[Any] = None,
+        plan: Optional[Any] = None,
         metadata: Optional[dict[str, Any]] = None,
     ) -> CodingAgentRequest:
         """
         Build a ready-to-execute CodingAgentRequest from the validated work order and execution context.
         """
+        meta = dict(metadata or {})
+        eff_understanding = understanding or meta.get("understanding") or (context.metadata.get("understanding") if context and context.metadata else None)
+        eff_plan = plan or meta.get("plan") or (context.metadata.get("plan") if context and context.metadata else None)
+
         package = cls.build_package(
             work_order=work_order,
             context=context,
             system_prompt_override=system_prompt_override,
-            metadata=metadata,
+            understanding=eff_understanding,
+            plan=eff_plan,
+            metadata=meta,
         )
         final_prompt = prompt_override or package.prompt
         final_system_prompt = package.system_prompt

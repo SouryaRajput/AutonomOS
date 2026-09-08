@@ -114,6 +114,38 @@ class ClineCapabilityBinding:
             work_order_id=context.work_order_id,
         )
         self.on_event = on_event
+        self._active_processes: dict[str, Any] = {}
+        self._cancel_requested: bool = False
+        self._cancellation_reason: str = ""
+
+    def cancel_active_commands(self, reason: str = "Cancellation requested") -> int:
+        """
+        Terminate all currently active command processes and set cancel flag.
+        Returns the count of processes terminated.
+        """
+        self._cancel_requested = True
+        self._cancellation_reason = reason
+        terminated_count = 0
+        for cmd_id, proc in list(self._active_processes.items()):
+            try:
+                if hasattr(proc, "poll") and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        if hasattr(proc, "kill"):
+                            proc.kill()
+                            proc.wait(timeout=1.0)
+                    terminated_count += 1
+            except Exception as err:
+                logger.warning(f"Error terminating active command {cmd_id}: {err}")
+            finally:
+                self._active_processes.pop(cmd_id, None)
+        return terminated_count
+
+    @property
+    def is_cancel_requested(self) -> bool:
+        return self._cancel_requested
 
     @property
     def execution_id(self) -> str:
@@ -608,6 +640,18 @@ class ClineCapabilityBinding:
         - Commands run without shell=True to eliminate shell injection escapes.
         """
         cmd_str = command if isinstance(command, str) else shlex.join(command)
+        if self._cancel_requested:
+            return CapabilityOperationResult(
+                success=False,
+                allowed=False,
+                operation="COMMAND_EXECUTION",
+                target=cmd_str,
+                error_code="COMMAND_CANCELLED",
+                error_message=f"Command execution cancelled: {self._cancellation_reason or 'Execution was cancelled'}.",
+                execution_id=self.execution_id,
+                work_order_id=self.work_order_id,
+            )
+
         readiness_err = self._check_context_readiness("COMMAND_EXECUTION", cmd_str)
         if readiness_err:
             return readiness_err
@@ -666,16 +710,39 @@ class ClineCapabilityBinding:
         timeout = timeout_seconds or getattr(self.context.work_order, "time_budget", 60) or 60
 
         start_time = time.monotonic()
+        proc: Optional[subprocess.Popen] = None
+        cmd_key = f"cmd-{int(start_time * 1000)}"
         try:
-            proc = subprocess.run(
+            proc = subprocess.Popen(
                 tokens,
                 cwd=cwd,
-                timeout=timeout,
-                capture_output=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 text=True,
-                check=False,
             )
+            self._active_processes[cmd_key] = proc
+            stdout, stderr = proc.communicate(timeout=timeout)
+            returncode = proc.returncode
             duration_ms = int((time.monotonic() - start_time) * 1000)
+
+            if self._cancel_requested:
+                return CapabilityOperationResult(
+                    success=False,
+                    allowed=True,
+                    operation="COMMAND_EXECUTION",
+                    target=decision.normalized_command,
+                    error_code="COMMAND_CANCELLED",
+                    error_message=f"Command cancelled: {self._cancellation_reason or 'Execution was cancelled'}.",
+                    output={
+                        "exit_code": returncode,
+                        "stdout": stdout,
+                        "stderr": stderr,
+                        "duration_ms": duration_ms,
+                    },
+                    execution_id=self.execution_id,
+                    work_order_id=self.work_order_id,
+                    trace=decision.trace,
+                )
 
             self._record_event(
                 event_type=ProgrammerExecutionEventType.COMMAND_OPERATION,
@@ -683,27 +750,30 @@ class ClineCapabilityBinding:
                     "command": decision.normalized_command,
                     "working_directory": cwd,
                     "allowed": True,
-                    "exit_code": proc.returncode,
+                    "exit_code": returncode,
                     "duration_ms": duration_ms,
                 },
             )
 
             return CapabilityOperationResult(
-                success=(proc.returncode == 0),
+                success=(returncode == 0),
                 allowed=True,
                 operation="COMMAND_EXECUTION",
                 target=decision.normalized_command,
                 output={
-                    "exit_code": proc.returncode,
-                    "stdout": proc.stdout,
-                    "stderr": proc.stderr,
+                    "exit_code": returncode,
+                    "stdout": stdout,
+                    "stderr": stderr,
                     "duration_ms": duration_ms,
                 },
                 execution_id=self.execution_id,
                 work_order_id=self.work_order_id,
                 trace=decision.trace,
             )
-        except subprocess.TimeoutExpired as timeout_err:
+        except subprocess.TimeoutExpired:
+            if proc is not None:
+                proc.kill()
+                proc.wait()
             duration_ms = int((time.monotonic() - start_time) * 1000)
             self._record_event(
                 event_type=ProgrammerExecutionEventType.ERROR,

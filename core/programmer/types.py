@@ -249,6 +249,12 @@ class VerificationEvidenceSourceType(str, Enum):
     STATIC_ANALYSIS = "STATIC_ANALYSIS"
     EXTERNAL_EVALUATION = "EXTERNAL_EVALUATION"
     AGENT_CLAIM = "AGENT_CLAIM"
+    GIT = "GIT"
+    CODEBASE_EXPLORATION = "CODEBASE_EXPLORATION"
+    IMPACT_ANALYSIS = "IMPACT_ANALYSIS"
+    RISK_ASSESSMENT = "RISK_ASSESSMENT"
+    PLAN_VALIDATION = "PLAN_VALIDATION"
+    EXECUTION_SUPERVISION = "EXECUTION_SUPERVISION"
 
 
 class VerificationSummaryStatus(str, Enum):
@@ -273,6 +279,470 @@ class VerificationSummaryStatus(str, Enum):
         if val_str in ("NOT_VERIFIED", "UNVERIFIED", "NOT_RUN", "UNKNOWN"):
             return cls.UNVERIFIED
         return None
+
+
+class ProgrammerFailureCategory(str, Enum):
+    """
+    Deterministic failure category taxonomy for the Programmer subsystem.
+    Differentiates between agent lifecycle defects, command outcomes,
+    boundary violations, and verification verdicts.
+    """
+    AGENT_STARTUP = "AGENT_STARTUP"
+    AGENT_CRASH = "AGENT_CRASH"
+    AGENT_HUNG = "AGENT_HUNG"
+    COMMAND_FAILURE = "COMMAND_FAILURE"
+    VERIFICATION_FAILURE = "VERIFICATION_FAILURE"
+    TIMEOUT = "TIMEOUT"
+    CANCELLATION = "CANCELLATION"
+    PERMISSION = "PERMISSION"
+    SCOPE = "SCOPE"
+    RESOURCE = "RESOURCE"
+    BUDGET = "BUDGET"
+    DEPENDENCY = "DEPENDENCY"
+    MISSING_CONTEXT = "MISSING_CONTEXT"
+    INTERNAL = "INTERNAL"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class RecoveryDisposition(str, Enum):
+    """
+    Deterministic recovery disposition assigned to a Programmer execution failure.
+    Directs the high-level recovery action without executing it autonomously.
+    """
+    RETRY = "RETRY"          # Transient failure: retry attempt with backoff/budget check
+    CORRECT = "CORRECT"      # Verification failed but budget remains: bounded self-correction turn
+    ESCALATE = "ESCALATE"    # Requires higher-level Manager intervention or policy review
+    BLOCK = "BLOCK"          # Requires Manager decision, permission grant, or missing context
+    FAIL = "FAIL"            # Permanent/unrecoverable defect: terminate execution as failed
+    CANCEL = "CANCEL"        # Cancellation requested: clean termination without further actions
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.FAIL
+
+
+class ProgrammerFailureSeverity(str, Enum):
+    """Severity classification of a ProgrammerFailure."""
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.HIGH
+
+
+class FailureSourceType(str, Enum):
+    """Origin classification of the failure event or observation."""
+    AGENT = "AGENT"
+    COMMAND = "COMMAND"
+    VERIFICATION = "VERIFICATION"
+    WORKSPACE = "WORKSPACE"
+    POLICY = "POLICY"
+    SYSTEM = "SYSTEM"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class ExecutionMonitoringState(str, Enum):
+    """
+    Deterministic monitoring states for an active Programmer execution.
+    Transitions through: ACTIVE -> IDLE -> HUNG_SUSPECTED or terminal states.
+    """
+    ACTIVE = "ACTIVE"                  # Normal execution with recent activity or heartbeat
+    IDLE = "IDLE"                      # Inactivity exceeded threshold, but not yet suspected hung
+    HUNG_SUSPECTED = "HUNG_SUSPECTED"  # Silence exceeded hung threshold; candidate failure emitted
+    TERMINATED = "TERMINATED"          # External process or container terminated
+    TIMED_OUT = "TIMED_OUT"            # Execution exceeded total time allowance
+    CANCELLED = "CANCELLED"            # Execution cancelled upon request
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.ACTIVE
+
+
+class WatchdogStatus(str, Enum):
+    """Lifecycle status of the ExecutionWatchdog monitoring session."""
+    RUNNING = "RUNNING"
+    STOPPED = "STOPPED"
+    COMPLETED = "COMPLETED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.RUNNING
+
+
+class GitRepositoryState(str, Enum):
+    """Deterministic working-tree state of a Git repository."""
+    CLEAN = "CLEAN"
+    DIRTY = "DIRTY"
+    DETACHED = "DETACHED"
+    READY = "READY"
+    UNINITIALIZED = "UNINITIALIZED"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class GitIsolationMode(str, Enum):
+    """Change isolation mode for a Git execution environment."""
+    BRANCH = "BRANCH"
+    WORKTREE = "WORKTREE"
+    SHARED_CLONE = "SHARED_CLONE"
+    ISOLATED_CLONE = "ISOLATED_CLONE"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.BRANCH
+
+
+class GitWorktreeStatus(str, Enum):
+    """Deterministic lifecycle states for an execution-specific Git worktree."""
+    PROVISIONING = "PROVISIONING"
+    READY = "READY"
+    ACTIVE = "ACTIVE"
+    CLEANUP_PENDING = "CLEANUP_PENDING"
+    CLEANED = "CLEANED"
+    FAILED = "FAILED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.FAILED
+
+
+class GitWorktreeErrorCode(str, Enum):
+    """Structured error codes for Git worktree provisioning, isolation, or cleanup failures."""
+    ISOLATION_UNAVAILABLE = "ISOLATION_UNAVAILABLE"
+    REPOSITORY_INVALID = "REPOSITORY_INVALID"
+    BASE_REVISION_UNRESOLVED = "BASE_REVISION_UNRESOLVED"
+    WORKTREE_EXISTS = "WORKTREE_EXISTS"
+    BRANCH_COLLISION = "BRANCH_COLLISION"
+    PROVISIONING_FAILED = "PROVISIONING_FAILED"
+    CLEANUP_FAILED = "CLEANUP_FAILED"
+    PERMISSION_DENIED = "PERMISSION_DENIED"
+    TIMEOUT = "TIMEOUT"
+    CANCELLED = "CANCELLED"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class GitOperationCategory(str, Enum):
+    """Categorization of Git operations under Programmer governance."""
+    READ = "READ"
+    LOCAL_CHANGE_MANAGEMENT = "LOCAL_CHANGE_MANAGEMENT"
+    DESTRUCTIVE = "DESTRUCTIVE"
+    REMOTE = "REMOTE"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.READ
+
+
+class GitOperationType(str, Enum):
+    """Deterministic taxonomy of concrete Git operations."""
+    # READ
+    STATUS = "status"
+    DIFF = "diff"
+    LOG = "log"
+    SHOW = "show"
+    BRANCH_INFO = "branch_info"
+
+    # LOCAL CHANGE MANAGEMENT
+    ADD = "add"
+    COMMIT = "commit"
+    BRANCH_CREATE = "branch_create"
+
+    # DESTRUCTIVE
+    RESET = "reset"
+    CLEAN = "clean"
+    CHECKOUT_DISCARD = "checkout_discard"
+    BRANCH_DELETE = "branch_delete"
+
+    # REMOTE
+    FETCH = "fetch"
+    PUSH = "push"
+    PULL = "pull"
+
+    # INVALID / MALFORMED
+    INVALID = "invalid"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).lower()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.INVALID
+
+
+class ChangeSetStatus(str, Enum):
+    """Deterministic lifecycle and outcome states for a Git change set."""
+    UNCOMMITTED = "UNCOMMITTED"
+    COMMITTED = "COMMITTED"
+    EMPTY = "EMPTY"
+    INVALID = "INVALID"
+    FAILED = "FAILED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.INVALID
+
+
+class RepositoryAnomalyType(str, Enum):
+    """
+    Deterministic classification of repository anomalies and suspicious state detected
+    during repository state verification.
+    """
+    UNAUTHORIZED_CHANGES = "UNAUTHORIZED_CHANGES"
+    UNEXPECTED_UNCOMMITTED_CHANGES = "UNEXPECTED_UNCOMMITTED_CHANGES"
+    CHANGES_DISAPPEARED = "CHANGES_DISAPPEARED"
+    BASE_REVISION_MISMATCH = "BASE_REVISION_MISMATCH"
+    WORKSPACE_MISMATCH = "WORKSPACE_MISMATCH"
+    CROSS_EXECUTION_CONTAMINATION = "CROSS_EXECUTION_CONTAMINATION"
+    SUSPICIOUS_STATE = "SUSPICIOUS_STATE"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.SUSPICIOUS_STATE
+
+
+class ManagerDisposition(str, Enum):
+    """
+    Possible Manager evaluation outcomes and decisions for a delivered Programmer package.
+    Programmer may recommend a disposition, but Manager has authoritative decision power.
+    """
+    ACCEPT = "ACCEPT"
+    REQUEST_CHANGES = "REQUEST_CHANGES"
+    REJECT = "REJECT"
+    ESCALATE = "ESCALATE"
+    CANCEL = "CANCEL"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.REJECT
+
+
+class UnderstandingConfidence(str, Enum):
+    """
+    Epistemic classification for repository understanding insights.
+    Enforces strict distinction between observed repository facts, reasonable inferences,
+    and unknown/unverified elements. Never represent inference as fact.
+    """
+    OBSERVED = "OBSERVED"
+    INFERRED = "INFERRED"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class ImpactLevel(str, Enum):
+    """
+    Epistemic classification for implementation impact analysis.
+    Directly distinguishes direct targets, indirect dependents, potential side effects,
+    and unknown/unresolvable impacts. Never claim certainty without evidence.
+    """
+    DIRECT = "DIRECT"
+    INDIRECT = "INDIRECT"
+    POTENTIAL = "POTENTIAL"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class EngineeringRiskCategory(str, Enum):
+    """
+    Taxonomy of material engineering risks detected in an implementation plan
+    prior to code execution.
+    """
+    SECURITY = "SECURITY"
+    DATA_LOSS = "DATA_LOSS"
+    DATABASE_MIGRATION = "DATABASE_MIGRATION"
+    PUBLIC_API_CHANGE = "PUBLIC_API_CHANGE"
+    BREAKING_CHANGE = "BREAKING_CHANGE"
+    DEPENDENCY_CHANGE = "DEPENDENCY_CHANGE"
+    CONFIGURATION_CHANGE = "CONFIGURATION_CHANGE"
+    AUTHENTICATION = "AUTHENTICATION"
+    AUTHORIZATION = "AUTHORIZATION"
+    LARGE_SCOPE = "LARGE_SCOPE"
+    ARCHITECTURAL_CHANGE = "ARCHITECTURAL_CHANGE"
+    DESTRUCTIVE_OPERATION = "DESTRUCTIVE_OPERATION"
+    INSUFFICIENT_TEST_COVERAGE = "INSUFFICIENT_TEST_COVERAGE"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class PlanValidationStatus(str, Enum):
+    """
+    Validation decision status for a Programmer implementation plan.
+    - APPROVED: Plan is valid, compliant, and ready to execute within existing authority.
+    - APPROVED_WITH_WARNINGS: Plan is executable within authority, but carries non-blocking advisories.
+    - REQUIRES_ESCALATION: Plan requires Manager intervention (scope, permission, architecture, risk).
+    - INVALID: Plan violates foundational invariants, contains cycles, or has broken syntax/commands.
+    """
+    APPROVED = "APPROVED"
+    APPROVED_WITH_WARNINGS = "APPROVED_WITH_WARNINGS"
+    REQUIRES_ESCALATION = "REQUIRES_ESCALATION"
+    INVALID = "INVALID"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.INVALID
+
+
+class DeviationClassification(str, Enum):
+    """
+    Four-level taxonomy of execution deviations from planned expectations:
+    - EXPECTED: Anticipated variations (e.g. read operations, ancillary inspections); proceeds autonomously.
+    - MINOR: Low-impact variances that may continue autonomously (e.g. non-harmful allowed command variant).
+    - MATERIAL: Significant plan drift surfaced to Programmer policy and correction/recovery context.
+    - BLOCKING: Out-of-bounds action requiring Manager authority outside WorkOrder (triggers escalation/blocking).
+    """
+    EXPECTED = "EXPECTED"
+    MINOR = "MINOR"
+    MATERIAL = "MATERIAL"
+    BLOCKING = "BLOCKING"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.MINOR
+
+
+class PlanDeviationCategory(str, Enum):
+    """Specific categories of deviations detected during implementation plan supervision."""
+    UNEXPECTED_FILE = "UNEXPECTED_FILE"
+    UNEXPECTED_COMMAND = "UNEXPECTED_COMMAND"
+    STEP_DEPENDENCY_VIOLATION = "STEP_DEPENDENCY_VIOLATION"
+    REPEATED_FAILURE = "REPEATED_FAILURE"
+    SCOPE_EXPANSION = "SCOPE_EXPANSION"
+    EMERGING_RISK = "EMERGING_RISK"
+    MISSING_VERIFICATION = "MISSING_VERIFICATION"
+    ANOMALOUS_STATE = "ANOMALOUS_STATE"
+    OTHER = "OTHER"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.OTHER
+
+
+class ExecutionSupervisionStatus(str, Enum):
+    """Lifecycle monitoring state of execution plan supervision."""
+    SUPERVISING = "SUPERVISING"
+    BLOCKED = "BLOCKED"
+    ESCALATED = "ESCALATED"
+    COMPLETED = "COMPLETED"
+    CANCELLED = "CANCELLED"
+    FAILED = "FAILED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.SUPERVISING
+
+
+
 
 
 

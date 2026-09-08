@@ -134,6 +134,7 @@ class VerificationRunner:
         self.command_executor = command_executor
         self.default_timeout_seconds = default_timeout_seconds
         self._cancelled = False
+        self._active_processes: dict[str, Any] = {}
 
     @property
     def execution_id(self) -> str:
@@ -143,9 +144,23 @@ class VerificationRunner:
     def work_order_id(self) -> str:
         return self.context.work_order_id
 
-    def cancel(self) -> None:
-        """Signal cancellation to the verification runner."""
+    def cancel(self, reason: str = "Verification cancelled") -> None:
+        """Signal cancellation to the verification runner and terminate any active check processes."""
         self._cancelled = True
+        for chk_id, proc in list(self._active_processes.items()):
+            try:
+                if hasattr(proc, "poll") and proc.poll() is None:
+                    proc.terminate()
+                    try:
+                        proc.wait(timeout=1.0)
+                    except Exception:
+                        if hasattr(proc, "kill"):
+                            proc.kill()
+                            proc.wait(timeout=1.0)
+            except Exception as err:
+                logger.warning(f"Error terminating active verification process {chk_id}: {err}")
+            finally:
+                self._active_processes.pop(chk_id, None)
 
     def is_cancelled(self) -> bool:
         """Check whether verification has been cancelled."""
@@ -446,17 +461,19 @@ class VerificationRunner:
                 else:
                     exit_code = 0
             else:
-                proc = subprocess.run(
+                proc = subprocess.Popen(
                     tokens,
                     cwd=cwd,
-                    timeout=timeout_seconds,
-                    capture_output=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
                     text=True,
-                    check=False,
                 )
-                exit_code = proc.returncode
-                stdout = proc.stdout or ""
-                stderr = proc.stderr or ""
+                self._active_processes[check_id] = proc
+                try:
+                    stdout, stderr = proc.communicate(timeout=timeout_seconds)
+                    exit_code = proc.returncode
+                finally:
+                    self._active_processes.pop(check_id, None)
         except (subprocess.TimeoutExpired, TimeoutError) as timeout_err:
             is_timeout = True
             exec_error = f"Command timed out after {timeout_seconds} seconds: {timeout_err}"

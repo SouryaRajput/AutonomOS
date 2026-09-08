@@ -202,4 +202,36 @@ class WorkspaceProvisioningError(ProgrammerError):
         self.project_id = project_id
 
 
+class GitWorktreeError(ProgrammerError):
+    """Raised when Git worktree provisioning, lifecycle transition, or cleanup fails."""
+
+    def __init__(
+        self,
+        message: str,
+        error_code: str = "UNKNOWN",
+        worktree_id: Optional[str] = None,
+        execution_id: Optional[str] = None,
+        repository_id: Optional[str] = None,
+        details: Optional[dict[str, Any]] = None,
+    ):
+        d = dict(details or {})
+        code_str = error_code.value if hasattr(error_code, "value") else str(error_code)
+        d["error_code"] = code_str
+        if worktree_id:
+            d["worktree_id"] = worktree_id
+        if execution_id:
+            d["execution_id"] = execution_id
+        if repository_id:
+            d["repository_id"] = repository_id
+        super().__init__(
+            message=message,
+            code=f"GIT_WORKTREE_{code_str}",
+            details=d,
+        )
+        self.error_code = error_code
+        self.worktree_id = worktree_id
+        self.execution_id = execution_id
+        self.repository_id = repository_id
+
+
 

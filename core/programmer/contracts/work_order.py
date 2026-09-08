@@ -77,11 +77,15 @@ class ProgrammerWorkOrder:
         time_budget: int = 600,
         risk_level: RiskLevel | str = RiskLevel.LOW,
         status: ProgrammerWorkOrderStatus = ProgrammerWorkOrderStatus.CREATED,
+        parent_work_order_id: Optional[str] = None,
+        revision_number: int = 1,
         trace: Optional[dict[str, Any]] = None,
         metadata: Optional[dict[str, Any]] = None,
         created_at: Optional[str] = None,
     ):
         self.work_order_id = work_order_id
+        self.parent_work_order_id = parent_work_order_id
+        self.revision_number = int(revision_number)
 
         # Resolve task lineage accepting both manager_task_id and task_id
         if manager_task_id and task_id and manager_task_id != task_id:
@@ -162,6 +166,8 @@ class ProgrammerWorkOrder:
 
         # Identifier and lineage baseline verification
         validate_work_order_id(self.work_order_id)
+        if self.parent_work_order_id:
+            validate_work_order_id(self.parent_work_order_id)
         if not self.manager_task_id:
             raise ProgrammerLineageError("ProgrammerWorkOrder must have a valid non-empty manager_task_id (ManagerTask link).")
         if not self.project_id:
@@ -311,6 +317,65 @@ class ProgrammerWorkOrder:
             created_at=utc_now(),
         )
 
+    def create_revision(
+        self,
+        modifications: Optional[dict[str, Any]] = None,
+        reason: str = "",
+        new_work_order_id_val: Optional[str] = None,
+    ) -> ProgrammerWorkOrder:
+        """
+        Create a new revision of this work order with modified boundaries/instructions.
+        
+        Guarantees:
+        - Completely preserves the original work order untouched (immutable history).
+        - Generates a new unique work_order_id prefixed with 'pwo-'.
+        - Preserves strict lineage to manager_task_id, project_id, correlation_id.
+        - Sets metadata['parent_work_order_id'] = self.work_order_id.
+        - Increments metadata['revision_number'].
+        - Revalidates the new work order before returning.
+        """
+        mods = dict(modifications or {})
+        new_meta = dict(self.metadata)
+        rev_num = int(new_meta.get("revision_number", 1)) + 1
+        new_meta["parent_work_order_id"] = self.work_order_id
+        new_meta["revision_number"] = rev_num
+        new_meta["revision_reason"] = reason
+        new_meta["revised_from"] = self.work_order_id
+        if "metadata" in mods:
+            new_meta.update(mods.pop("metadata"))
+
+        target_wo_id = new_work_order_id_val or new_work_order_id()
+
+        revised = ProgrammerWorkOrder(
+            work_order_id=target_wo_id,
+            manager_task_id=self.manager_task_id,
+            task_id=self.task_id,
+            project_id=self.project_id,
+            correlation_id=self.correlation_id,
+            objective=mods.get("objective", self.objective),
+            instructions=mods.get("instructions", self.instructions),
+            context=mods.get("context", self.context),
+            allowed_paths=mods.get("allowed_paths", self.allowed_paths),
+            writable_paths=mods.get("writable_paths", self.writable_paths),
+            read_only_paths=mods.get("read_only_paths", self.read_only_paths),
+            forbidden_paths=mods.get("forbidden_paths", self.forbidden_paths),
+            allowed_commands=mods.get("allowed_commands", self.allowed_commands),
+            constraints=mods.get("constraints", self.constraints),
+            technical_requirements=mods.get("technical_requirements", self.technical_requirements),
+            acceptance_criteria=mods.get("acceptance_criteria", self.acceptance_criteria),
+            required_checks=mods.get("required_checks", self.required_checks),
+            research_evidence=mods.get("research_evidence", self.research_evidence),
+            dependencies=mods.get("dependencies", self.dependencies),
+            iteration_budget=mods.get("iteration_budget", self.iteration_budget),
+            time_budget=mods.get("time_budget", self.time_budget),
+            risk_level=mods.get("risk_level", self.risk_level),
+            status=mods.get("status", ProgrammerWorkOrderStatus.ASSIGNED),
+            trace=self.trace,
+            metadata=new_meta,
+        )
+        revised.validate()
+        return revised
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "work_order_id": self.work_order_id,
@@ -342,6 +407,8 @@ class ProgrammerWorkOrder:
             "time_budget": self.time_budget,
             "risk_level": self.risk_level.value if isinstance(self.risk_level, RiskLevel) else str(self.risk_level),
             "status": self.status.value if isinstance(self.status, ProgrammerWorkOrderStatus) else str(self.status),
+            "parent_work_order_id": self.parent_work_order_id,
+            "revision_number": self.revision_number,
             "trace": self.trace,
             "metadata": dict(self.metadata),
             "created_at": self.created_at,
@@ -387,7 +454,48 @@ class ProgrammerWorkOrder:
             time_budget=int(data.get("time_budget", 600)),
             risk_level=risk_level,
             status=status,
+            parent_work_order_id=data.get("parent_work_order_id"),
+            revision_number=int(data.get("revision_number", 1)),
             trace=data.get("trace"),
             metadata=dict(data.get("metadata", {})),
             created_at=data.get("created_at", utc_now()),
         )
+
+    def create_revision(
+        self,
+        modifications: dict[str, Any],
+        reason: str = "",
+        new_work_order_id_val: Optional[str] = None,
+    ) -> ProgrammerWorkOrder:
+        """
+        Create a new revision of this work order with specified modifications.
+        The original work order remains unchanged.
+        Lineage (manager_task_id, project_id, correlation_id) is strictly preserved.
+        parent_work_order_id is set to this work order's ID, and revision_number is incremented.
+        The revised work order is validated.
+        """
+        revised_data = self.to_dict()
+        # Immutable lineage fields cannot be overridden
+        protected_fields = {"manager_task_id", "task_id", "project_id", "correlation_id"}
+        for k, v in (modifications or {}).items():
+            if k in protected_fields and v != getattr(self, k, None):
+                raise ProgrammerLineageError(
+                    f"Cannot modify immutable lineage field '{k}' during WorkOrder revision."
+                )
+            revised_data[k] = v
+
+        revised_data["work_order_id"] = new_work_order_id_val or new_work_order_id()
+        revised_data["parent_work_order_id"] = self.work_order_id
+        revised_data["revision_number"] = self.revision_number + 1
+        revised_data["status"] = ProgrammerWorkOrderStatus.CREATED.value
+        revised_data["created_at"] = utc_now()
+
+        meta = dict(revised_data.get("metadata", {}))
+        meta["revision_reason"] = reason
+        meta["previous_work_order_id"] = self.work_order_id
+        revised_data["metadata"] = meta
+
+        revised = ProgrammerWorkOrder.from_dict(revised_data)
+        revised.validate()
+        return revised
+

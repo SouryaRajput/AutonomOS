@@ -803,6 +803,7 @@ class BoundedCorrectionLoop:
                 on_event=on_event,
                 root_path_override=root_path_override,
                 isolation_mode=isolation_mode,
+                context=current_context,
             )
             current_context = current_outcome.context
         if current_outcome is not None and current_outcome not in all_outcomes:

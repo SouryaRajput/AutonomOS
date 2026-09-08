@@ -21,6 +21,27 @@ VERIFICATION_CHECK_ID_PREFIX = "vchk-"
 VERIFICATION_EVIDENCE_ID_PREFIX = "vevid-"
 DIFF_VERIFICATION_ID_PREFIX = "vdiff-"
 ITERATION_ID_PREFIX = "piter-"
+FAILURE_ID_PREFIX = "pfail-"
+WATCHDOG_ID_PREFIX = "pwdog-"
+RECOVERY_DECISION_ID_PREFIX = "prec-"
+RETRY_ATTEMPT_ID_PREFIX = "pretry-"
+ESCALATION_ID_PREFIX = "pesc-"
+GIT_REPOSITORY_ID_PREFIX = "grepo-"
+GIT_REVISION_ID_PREFIX = "grev-"
+GIT_WORKTREE_ID_PREFIX = "gwt-"
+CHANGESET_ID_PREFIX = "pcs-"
+REPO_STATE_VERIFICATION_ID_PREFIX = "vrepo-"
+DELIVERY_ID_PREFIX = "pdel-"
+UNDERSTANDING_ID_PREFIX = "pund-"
+IMPACT_ANALYSIS_ID_PREFIX = "pimp-"
+PLAN_ID_PREFIX = "ppln-"
+PLAN_STEP_ID_PREFIX = "pstep-"
+ESCALATION_CANDIDATE_ID_PREFIX = "pescand-"
+ENGINEERING_RISK_ID_PREFIX = "prisk-"
+RISK_ASSESSMENT_ID_PREFIX = "prasm-"
+PLAN_VALIDATION_RESULT_ID_PREFIX = "pvr-"
+SUPERVISION_RECORD_ID_PREFIX = "psup-"
+PLAN_DEVIATION_ID_PREFIX = "pdev-"
 
 ALL_PROGRAMMER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -37,6 +58,27 @@ ALL_PROGRAMMER_PREFIXES = (
     VERIFICATION_EVIDENCE_ID_PREFIX,
     DIFF_VERIFICATION_ID_PREFIX,
     ITERATION_ID_PREFIX,
+    FAILURE_ID_PREFIX,
+    WATCHDOG_ID_PREFIX,
+    RECOVERY_DECISION_ID_PREFIX,
+    RETRY_ATTEMPT_ID_PREFIX,
+    ESCALATION_ID_PREFIX,
+    GIT_REPOSITORY_ID_PREFIX,
+    GIT_REVISION_ID_PREFIX,
+    GIT_WORKTREE_ID_PREFIX,
+    CHANGESET_ID_PREFIX,
+    REPO_STATE_VERIFICATION_ID_PREFIX,
+    DELIVERY_ID_PREFIX,
+    UNDERSTANDING_ID_PREFIX,
+    IMPACT_ANALYSIS_ID_PREFIX,
+    PLAN_ID_PREFIX,
+    PLAN_STEP_ID_PREFIX,
+    ESCALATION_CANDIDATE_ID_PREFIX,
+    ENGINEERING_RISK_ID_PREFIX,
+    RISK_ASSESSMENT_ID_PREFIX,
+    PLAN_VALIDATION_RESULT_ID_PREFIX,
+    SUPERVISION_RECORD_ID_PREFIX,
+    PLAN_DEVIATION_ID_PREFIX,
 )
 
 # Regex patterns: prefix followed by non-empty alphanumeric / hyphen string
@@ -355,9 +397,536 @@ def validate_iteration_id(iteration_id: str) -> None:
         )
 
 
+def new_failure_id() -> str:
+    """Generate unique identifier for a ProgrammerFailure."""
+    return f"{FAILURE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_failure_id(failure_id: str) -> None:
+    """
+    Validate that failure_id starts with 'pfail-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(failure_id, str) or not failure_id.startswith(FAILURE_ID_PREFIX) or len(failure_id) <= len(FAILURE_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="failure_id",
+            identifier_value=str(failure_id),
+            expected_prefix=FAILURE_ID_PREFIX,
+        )
+    suffix = failure_id[len(FAILURE_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="failure_id",
+            identifier_value=str(failure_id),
+            expected_prefix=FAILURE_ID_PREFIX,
+        )
+
+
+def new_watchdog_id() -> str:
+    """Generate unique identifier for an ExecutionWatchdog record."""
+    return f"{WATCHDOG_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_watchdog_id(watchdog_id: str) -> None:
+    """
+    Validate that watchdog_id starts with 'pwdog-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(watchdog_id, str) or not watchdog_id.startswith(WATCHDOG_ID_PREFIX) or len(watchdog_id) <= len(WATCHDOG_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="watchdog_id",
+            identifier_value=str(watchdog_id),
+            expected_prefix=WATCHDOG_ID_PREFIX,
+        )
+    suffix = watchdog_id[len(WATCHDOG_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="watchdog_id",
+            identifier_value=str(watchdog_id),
+            expected_prefix=WATCHDOG_ID_PREFIX,
+        )
+
+
+def new_recovery_decision_id() -> str:
+    """Generate unique identifier for a RecoveryDecision record."""
+    return f"{RECOVERY_DECISION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_recovery_decision_id(decision_id: str) -> None:
+    """
+    Validate that decision_id starts with 'prec-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(decision_id, str) or not decision_id.startswith(RECOVERY_DECISION_ID_PREFIX) or len(decision_id) <= len(RECOVERY_DECISION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="decision_id",
+            identifier_value=str(decision_id),
+            expected_prefix=RECOVERY_DECISION_ID_PREFIX,
+        )
+    suffix = decision_id[len(RECOVERY_DECISION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="decision_id",
+            identifier_value=str(decision_id),
+            expected_prefix=RECOVERY_DECISION_ID_PREFIX,
+        )
+
+
+def new_retry_attempt_id() -> str:
+    """Generate unique identifier for a RetryAttemptRecord."""
+    return f"{RETRY_ATTEMPT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_retry_attempt_id(attempt_id: str) -> None:
+    """
+    Validate that attempt_id starts with 'pretry-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(attempt_id, str) or not attempt_id.startswith(RETRY_ATTEMPT_ID_PREFIX) or len(attempt_id) <= len(RETRY_ATTEMPT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="attempt_id",
+            identifier_value=str(attempt_id),
+            expected_prefix=RETRY_ATTEMPT_ID_PREFIX,
+        )
+    suffix = attempt_id[len(RETRY_ATTEMPT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="attempt_id",
+            identifier_value=str(attempt_id),
+            expected_prefix=RETRY_ATTEMPT_ID_PREFIX,
+        )
+
+
+def new_escalation_id() -> str:
+    """Generate unique identifier for a ProgrammerEscalation record."""
+    return f"{ESCALATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_escalation_id(escalation_id: str) -> None:
+    """
+    Validate that escalation_id starts with 'pesc-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(escalation_id, str) or not escalation_id.startswith(ESCALATION_ID_PREFIX) or len(escalation_id) <= len(ESCALATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="escalation_id",
+            identifier_value=str(escalation_id),
+            expected_prefix=ESCALATION_ID_PREFIX,
+        )
+    suffix = escalation_id[len(ESCALATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="escalation_id",
+            identifier_value=str(escalation_id),
+            expected_prefix=ESCALATION_ID_PREFIX,
+        )
+
+
+def new_git_repository_id() -> str:
+    """Generate unique identifier for a GitRepository."""
+    return f"{GIT_REPOSITORY_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_git_repository_id(repository_id: str) -> None:
+    """
+    Validate that repository_id starts with 'grepo-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(repository_id, str) or not repository_id.startswith(GIT_REPOSITORY_ID_PREFIX) or len(repository_id) <= len(GIT_REPOSITORY_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="repository_id",
+            identifier_value=str(repository_id),
+            expected_prefix=GIT_REPOSITORY_ID_PREFIX,
+        )
+    suffix = repository_id[len(GIT_REPOSITORY_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="repository_id",
+            identifier_value=str(repository_id),
+            expected_prefix=GIT_REPOSITORY_ID_PREFIX,
+        )
+
+
+def new_git_revision_id() -> str:
+    """Generate unique identifier for a GitRevision."""
+    return f"{GIT_REVISION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_git_revision_id(revision_id: str) -> None:
+    """
+    Validate that revision_id starts with 'grev-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(revision_id, str) or not revision_id.startswith(GIT_REVISION_ID_PREFIX) or len(revision_id) <= len(GIT_REVISION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="revision_id",
+            identifier_value=str(revision_id),
+            expected_prefix=GIT_REVISION_ID_PREFIX,
+        )
+    suffix = revision_id[len(GIT_REVISION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="revision_id",
+            identifier_value=str(revision_id),
+            expected_prefix=GIT_REVISION_ID_PREFIX,
+        )
+
+
+def new_git_worktree_id() -> str:
+    """Generate unique identifier for an isolated GitWorktree."""
+    return f"{GIT_WORKTREE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_git_worktree_id(worktree_id: str) -> None:
+    """
+    Validate that worktree_id starts with 'gwt-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(worktree_id, str) or not worktree_id.startswith(GIT_WORKTREE_ID_PREFIX) or len(worktree_id) <= len(GIT_WORKTREE_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="worktree_id",
+            identifier_value=str(worktree_id),
+            expected_prefix=GIT_WORKTREE_ID_PREFIX,
+        )
+    suffix = worktree_id[len(GIT_WORKTREE_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="worktree_id",
+            identifier_value=str(worktree_id),
+            expected_prefix=GIT_WORKTREE_ID_PREFIX,
+        )
+
+
+def new_change_set_id() -> str:
+    """Generate unique identifier for a ChangeSet."""
+    return f"{CHANGESET_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_change_set_id(change_set_id: str) -> None:
+    """
+    Validate that change_set_id starts with 'pcs-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(change_set_id, str) or not change_set_id.startswith(CHANGESET_ID_PREFIX) or len(change_set_id) <= len(CHANGESET_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="change_set_id",
+            identifier_value=str(change_set_id),
+            expected_prefix=CHANGESET_ID_PREFIX,
+        )
+    suffix = change_set_id[len(CHANGESET_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="change_set_id",
+            identifier_value=str(change_set_id),
+            expected_prefix=CHANGESET_ID_PREFIX,
+        )
+
+
+def new_repo_state_verification_id() -> str:
+    """Generate unique identifier for a RepositoryStateVerification."""
+    return f"{REPO_STATE_VERIFICATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_repo_state_verification_id(verification_id: str) -> None:
+    """
+    Validate that verification_id starts with 'vrepo-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(verification_id, str) or not verification_id.startswith(REPO_STATE_VERIFICATION_ID_PREFIX) or len(verification_id) <= len(REPO_STATE_VERIFICATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="verification_id",
+            identifier_value=str(verification_id),
+            expected_prefix=REPO_STATE_VERIFICATION_ID_PREFIX,
+        )
+    suffix = verification_id[len(REPO_STATE_VERIFICATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="verification_id",
+            identifier_value=str(verification_id),
+            expected_prefix=REPO_STATE_VERIFICATION_ID_PREFIX,
+        )
+
+
+def new_delivery_id() -> str:
+    """Generate unique identifier for a DeliveryPackage."""
+    return f"{DELIVERY_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_delivery_id(delivery_id: str) -> None:
+    """
+    Validate that delivery_id starts with 'pdel-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(delivery_id, str) or not delivery_id.startswith(DELIVERY_ID_PREFIX) or len(delivery_id) <= len(DELIVERY_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="delivery_id",
+            identifier_value=str(delivery_id),
+            expected_prefix=DELIVERY_ID_PREFIX,
+        )
+    suffix = delivery_id[len(DELIVERY_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="delivery_id",
+            identifier_value=str(delivery_id),
+            expected_prefix=DELIVERY_ID_PREFIX,
+        )
+
+
+def new_codebase_understanding_id() -> str:
+    """Generate unique identifier for a CodebaseUnderstanding."""
+    return f"{UNDERSTANDING_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_codebase_understanding_id(understanding_id: str) -> None:
+    """
+    Validate that understanding_id starts with 'pund-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(understanding_id, str) or not understanding_id.startswith(UNDERSTANDING_ID_PREFIX) or len(understanding_id) <= len(UNDERSTANDING_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="understanding_id",
+            identifier_value=str(understanding_id),
+            expected_prefix=UNDERSTANDING_ID_PREFIX,
+        )
+    suffix = understanding_id[len(UNDERSTANDING_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="understanding_id",
+            identifier_value=str(understanding_id),
+            expected_prefix=UNDERSTANDING_ID_PREFIX,
+        )
+
+
+def new_impact_analysis_id() -> str:
+    """Generate unique identifier for an ImpactAnalysis."""
+    return f"{IMPACT_ANALYSIS_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_impact_analysis_id(analysis_id: str) -> None:
+    """
+    Validate that analysis_id starts with 'pimp-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(analysis_id, str) or not analysis_id.startswith(IMPACT_ANALYSIS_ID_PREFIX) or len(analysis_id) <= len(IMPACT_ANALYSIS_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="analysis_id",
+            identifier_value=str(analysis_id),
+            expected_prefix=IMPACT_ANALYSIS_ID_PREFIX,
+        )
+    suffix = analysis_id[len(IMPACT_ANALYSIS_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="analysis_id",
+            identifier_value=str(analysis_id),
+            expected_prefix=IMPACT_ANALYSIS_ID_PREFIX,
+        )
+
+
+def new_plan_id() -> str:
+    """Generate unique identifier for an ImplementationPlan."""
+    return f"{PLAN_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_plan_id(plan_id: str) -> None:
+    """
+    Validate that plan_id starts with 'ppln-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(plan_id, str) or not plan_id.startswith(PLAN_ID_PREFIX) or len(plan_id) <= len(PLAN_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="plan_id",
+            identifier_value=str(plan_id),
+            expected_prefix=PLAN_ID_PREFIX,
+        )
+    suffix = plan_id[len(PLAN_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="plan_id",
+            identifier_value=str(plan_id),
+            expected_prefix=PLAN_ID_PREFIX,
+        )
+
+
+def new_plan_step_id() -> str:
+    """Generate unique identifier for an ImplementationStep."""
+    return f"{PLAN_STEP_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_plan_step_id(step_id: str) -> None:
+    """
+    Validate that step_id starts with 'pstep-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(step_id, str) or not step_id.startswith(PLAN_STEP_ID_PREFIX) or len(step_id) <= len(PLAN_STEP_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="step_id",
+            identifier_value=str(step_id),
+            expected_prefix=PLAN_STEP_ID_PREFIX,
+        )
+    suffix = step_id[len(PLAN_STEP_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="step_id",
+            identifier_value=str(step_id),
+            expected_prefix=PLAN_STEP_ID_PREFIX,
+        )
+
+
+def new_escalation_candidate_id() -> str:
+    """Generate unique identifier for an EscalationCandidate."""
+    return f"{ESCALATION_CANDIDATE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_escalation_candidate_id(candidate_id: str) -> None:
+    """
+    Validate that candidate_id starts with 'pescand-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(candidate_id, str) or not candidate_id.startswith(ESCALATION_CANDIDATE_ID_PREFIX) or len(candidate_id) <= len(ESCALATION_CANDIDATE_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="candidate_id",
+            identifier_value=str(candidate_id),
+            expected_prefix=ESCALATION_CANDIDATE_ID_PREFIX,
+        )
+    suffix = candidate_id[len(ESCALATION_CANDIDATE_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="candidate_id",
+            identifier_value=str(candidate_id),
+            expected_prefix=ESCALATION_CANDIDATE_ID_PREFIX,
+        )
+
+
+def new_engineering_risk_id() -> str:
+    """Generate unique identifier for an EngineeringRisk."""
+    return f"{ENGINEERING_RISK_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_engineering_risk_id(risk_id: str) -> None:
+    """
+    Validate that risk_id starts with 'prisk-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(risk_id, str) or not risk_id.startswith(ENGINEERING_RISK_ID_PREFIX) or len(risk_id) <= len(ENGINEERING_RISK_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="risk_id",
+            identifier_value=str(risk_id),
+            expected_prefix=ENGINEERING_RISK_ID_PREFIX,
+        )
+    suffix = risk_id[len(ENGINEERING_RISK_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="risk_id",
+            identifier_value=str(risk_id),
+            expected_prefix=ENGINEERING_RISK_ID_PREFIX,
+        )
+
+
+def new_risk_assessment_id() -> str:
+    """Generate unique identifier for a RiskAssessment."""
+    return f"{RISK_ASSESSMENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_risk_assessment_id(assessment_id: str) -> None:
+    """
+    Validate that assessment_id starts with 'prasm-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(assessment_id, str) or not assessment_id.startswith(RISK_ASSESSMENT_ID_PREFIX) or len(assessment_id) <= len(RISK_ASSESSMENT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="assessment_id",
+            identifier_value=str(assessment_id),
+            expected_prefix=RISK_ASSESSMENT_ID_PREFIX,
+        )
+    suffix = assessment_id[len(RISK_ASSESSMENT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="assessment_id",
+            identifier_value=str(assessment_id),
+            expected_prefix=RISK_ASSESSMENT_ID_PREFIX,
+        )
+
+
+def new_plan_validation_result_id() -> str:
+    """Generate unique identifier for a PlanValidationResult."""
+    return f"{PLAN_VALIDATION_RESULT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_plan_validation_result_id(result_id: str) -> None:
+    """
+    Validate that result_id starts with 'pvr-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(result_id, str) or not result_id.startswith(PLAN_VALIDATION_RESULT_ID_PREFIX) or len(result_id) <= len(PLAN_VALIDATION_RESULT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="result_id",
+            identifier_value=str(result_id),
+            expected_prefix=PLAN_VALIDATION_RESULT_ID_PREFIX,
+        )
+    suffix = result_id[len(PLAN_VALIDATION_RESULT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="result_id",
+            identifier_value=str(result_id),
+            expected_prefix=PLAN_VALIDATION_RESULT_ID_PREFIX,
+        )
+
+
+def new_supervision_record_id() -> str:
+    """Generate unique identifier for an ExecutionSupervisionRecord."""
+    return f"{SUPERVISION_RECORD_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_supervision_record_id(supervision_id: str) -> None:
+    """
+    Validate that supervision_id starts with 'psup-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(supervision_id, str) or not supervision_id.startswith(SUPERVISION_RECORD_ID_PREFIX) or len(supervision_id) <= len(SUPERVISION_RECORD_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="supervision_id",
+            identifier_value=str(supervision_id),
+            expected_prefix=SUPERVISION_RECORD_ID_PREFIX,
+        )
+    suffix = supervision_id[len(SUPERVISION_RECORD_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="supervision_id",
+            identifier_value=str(supervision_id),
+            expected_prefix=SUPERVISION_RECORD_ID_PREFIX,
+        )
+
+
+def new_plan_deviation_id() -> str:
+    """Generate unique identifier for a PlanDeviation."""
+    return f"{PLAN_DEVIATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_plan_deviation_id(deviation_id: str) -> None:
+    """
+    Validate that deviation_id starts with 'pdev-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(deviation_id, str) or not deviation_id.startswith(PLAN_DEVIATION_ID_PREFIX) or len(deviation_id) <= len(PLAN_DEVIATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="deviation_id",
+            identifier_value=str(deviation_id),
+            expected_prefix=PLAN_DEVIATION_ID_PREFIX,
+        )
+    suffix = deviation_id[len(PLAN_DEVIATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="deviation_id",
+            identifier_value=str(deviation_id),
+            expected_prefix=PLAN_DEVIATION_ID_PREFIX,
+        )
+
+
 def is_programmer_id(identifier: str) -> bool:
     """Check whether a given identifier belongs to the Programmer subsystem domain."""
     if not isinstance(identifier, str):
         return False
     return any(identifier.startswith(prefix) for prefix in ALL_PROGRAMMER_PREFIXES)
+
+
 

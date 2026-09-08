@@ -5,6 +5,8 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Callable, Optional, Sequence, Union
 
+from core.programmer.contracts.cancellation import ProgrammerCancellation
+from core.programmer.contracts.cancellation_handler import ProgrammerCancellationHandler
 from core.programmer.contracts.capability_binding import ClineCapabilityBinding
 from core.programmer.contracts.coding_agent import (
     CodingAgentBackend,
@@ -187,6 +189,8 @@ class ControlledProgrammerExecutor:
         self.backend = backend
         self._active_executions: dict[str, ProgrammerExecution] = {}
         self._active_backends: dict[str, CodingAgentBackend] = {}
+        self._active_bindings: dict[str, ClineCapabilityBinding] = {}
+        self._cancellation_handler = ProgrammerCancellationHandler()
 
     def execute(
         self,
@@ -198,6 +202,7 @@ class ControlledProgrammerExecutor:
         system_prompt_override: Optional[str] = None,
         prompt_override: Optional[str] = None,
         isolation_mode: Optional[Union[WorkspaceIsolationMode, str]] = None,
+        context: Optional[ProgrammerExecutionContext] = None,
     ) -> ControlledExecutionOutcome:
         """
         Execute an end-to-end controlled Programmer implementation session.
@@ -211,6 +216,7 @@ class ControlledProgrammerExecutor:
             system_prompt_override: Optional system prompt text override.
             prompt_override: Optional user prompt text override.
             isolation_mode: Optional workspace isolation mode (SHARED or ISOLATED).
+            context: Optional pre-provisioned ProgrammerExecutionContext.
             
         Returns:
             ControlledExecutionOutcome encapsulating execution state, capabilities, trace, and preliminary result.
@@ -269,47 +275,58 @@ class ControlledProgrammerExecutor:
         # ----------------------------------------------------------------------
         # Step 4: Workspace Provisioning & ExecutionContext Creation
         # ----------------------------------------------------------------------
-        prov_result = self.provisioner.provision(
-            work_order=work_order,
-            execution=execution,
-            isolation_mode=isolation_mode,
-            root_path_override=root_path_override,
-        )
-
-        if not prov_result.is_ready() or prov_result.execution_context is None:
-            err_msg = prov_result.error_message or "Workspace provisioning failed."
-            logger.error(f"Execution {execution.execution_id} provisioning failed: {err_msg}")
-            if not execution.is_terminal:
-                execution.transition_to(
-                    ProgrammerExecutionStatus.FAILED,
-                    reason=err_msg,
+        if context is not None:
+            if context.execution_id != execution.execution_id:
+                raise ProgrammerLineageError(
+                    f"Lineage mismatch: execution context execution_id '{context.execution_id}' "
+                    f"does not match execution '{execution.execution_id}'."
                 )
-            fail_result = ProgrammerResult(
-                result_id=new_result_id(),
-                execution_id=execution.execution_id,
-                work_order_id=work_order.work_order_id,
-                task_id=work_order.task_id,
-                project_id=work_order.project_id,
-                correlation_id=work_order.correlation_id,
-                status=ProgrammerResultStatus.FAILED,
-                summary=f"Workspace provisioning failed: {err_msg}",
-                summary_for_manager=f"Workspace provisioning failed: {err_msg}",
-                metadata={
-                    "verification_status": "UNVERIFIED",
-                    "agent_execution_status": "FAILED",
-                    "implementation_status": "FAILED",
-                    "error_code": str(prov_result.error_code),
-                },
-                blockers=[err_msg],
-                material_blockers=[err_msg],
-            )
-            return ControlledExecutionOutcome(
+            if context.work_order_id != work_order.work_order_id:
+                raise ProgrammerLineageError(
+                    f"Lineage mismatch: execution context work_order_id '{context.work_order_id}' "
+                    f"does not match work order '{work_order.work_order_id}'."
+                )
+        else:
+            prov_result = self.provisioner.provision(
+                work_order=work_order,
                 execution=execution,
-                result=fail_result,
-                error_message=err_msg,
+                isolation_mode=isolation_mode,
+                root_path_override=root_path_override,
             )
 
-        context = prov_result.execution_context
+            if not prov_result.is_ready() or prov_result.execution_context is None:
+                err_msg = prov_result.error_message or "Workspace provisioning failed."
+                logger.error(f"Execution {execution.execution_id} provisioning failed: {err_msg}")
+                if not execution.is_terminal:
+                    execution.transition_to(
+                        ProgrammerExecutionStatus.FAILED,
+                        reason=err_msg,
+                    )
+                fail_result = ProgrammerResult(
+                    result_id=new_result_id(),
+                    execution_id=execution.execution_id,
+                    work_order_id=work_order.work_order_id,
+                    task_id=work_order.task_id,
+                    project_id=work_order.project_id,
+                    correlation_id=work_order.correlation_id,
+                    status=ProgrammerResultStatus.FAILED,
+                    summary=f"Workspace provisioning failed: {err_msg}",
+                    summary_for_manager=f"Workspace provisioning failed: {err_msg}",
+                    metadata={
+                        "verification_status": "UNVERIFIED",
+                        "agent_execution_status": "FAILED",
+                        "implementation_status": "FAILED",
+                        "error_code": str(prov_result.error_code),
+                    },
+                )
+                return ControlledExecutionOutcome(
+                    execution=execution,
+                    context=prov_result.execution_context,
+                    capability_binding=None,
+                    result=fail_result,
+                    error_message=err_msg,
+                )
+            context = prov_result.execution_context
 
         # ----------------------------------------------------------------------
         # Step 5: Setup Trace Collector & Capability Binding
@@ -324,6 +341,7 @@ class ControlledProgrammerExecutor:
             on_event=on_event,
         )
         context.metadata["capability_binding"] = capability_binding
+        self._active_bindings[execution.execution_id] = capability_binding
 
         # ----------------------------------------------------------------------
         # Step 6: Resolve Backend & Build Prompt Package / CodingAgentRequest
@@ -331,13 +349,15 @@ class ControlledProgrammerExecutor:
         active_backend = backend or self.backend or MockCodingAgentBackend()
         self._active_backends[execution.execution_id] = active_backend
 
+        meta_dict = dict(context.metadata) if context and context.metadata else {}
+        meta_dict["capability_binding"] = capability_binding
         request = ProgrammerPromptBuilder.build_request(
             work_order=work_order,
             context=context,
             backend_type=active_backend.backend_type,
             system_prompt_override=system_prompt_override,
             prompt_override=prompt_override,
-            metadata={"capability_binding": capability_binding},
+            metadata=meta_dict,
         )
 
         # ----------------------------------------------------------------------
@@ -866,34 +886,23 @@ class ControlledProgrammerExecutor:
         requested_by: str = "manager",
     ) -> bool:
         """
-        Request cancellation of an active execution session.
-        
-        Propagates cancellation to the active backend and transitions execution to CANCELLED.
+        Request cancellation of an active execution session with full provenance.
         """
         execution = self._active_executions.get(execution_id)
         if not execution or execution.is_terminal:
             return False
 
-        # Signal backend if running
         backend = self._active_backends.get(execution_id)
-        if backend:
-            try:
-                backend.cancel(
-                    CodingAgentCancellationRequest(
-                        execution_id=execution_id,
-                        work_order_id=execution.work_order_id,
-                        reason=reason,
-                    )
-                )
-            except Exception as b_err:
-                logger.warning(f"Error cancelling backend for execution {execution_id}: {b_err}")
+        capability_binding = self._active_bindings.get(execution_id)
 
-        # Transition execution
-        execution.cancel(
+        cancellation = self._cancellation_handler.cancel_execution(
+            execution=execution,
             requested_by=requested_by,
             reason=reason,
+            backend=backend,
+            capability_binding=capability_binding,
         )
-        return True
+        return cancellation.is_confirmed
 
 
 # Alias for backward-compatible or simplified imports

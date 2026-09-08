@@ -185,16 +185,24 @@ class ProgrammerExecution:
         requested_by: str,
         reason: str,
         metadata: Optional[dict[str, Any]] = None,
+        cancellation: Optional[ProgrammerCancellation] = None,
+        confirmed: bool = True,
+        agent_terminated: bool = True,
+        cleanup_completed: bool = True,
     ) -> ProgrammerCancellation:
         """
         Cancel execution attempt with full cancellation provenance.
         Transitions status to CANCELLED.
         """
-        cancellation = ProgrammerCancellation(
-            requested_by=requested_by,
-            reason=reason,
-            metadata=dict(metadata or {}),
-        )
+        if cancellation is None:
+            cancellation = ProgrammerCancellation(
+                requested_by=requested_by,
+                reason=reason,
+                confirmed=confirmed,
+                agent_terminated=agent_terminated,
+                cleanup_completed=cleanup_completed,
+                metadata=dict(metadata or {}),
+            )
         self.transition_to(
             ProgrammerExecutionStatus.CANCELLED,
             reason=reason,

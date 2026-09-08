@@ -226,7 +226,10 @@ class ClineEventTranslator:
             raw_type_str = str(raw_event.get("event_type", "message")).strip().lower()
 
         # Check mapping
-        if raw_type_str in cls.EVENT_TYPE_MAPPING:
+        if raw_type_str in {e.value.lower() for e in ProgrammerExecutionEventType}:
+            event_type = ProgrammerExecutionEventType(raw_type_str.upper())
+            is_unknown = False
+        elif raw_type_str in cls.EVENT_TYPE_MAPPING:
             event_type = cls.EVENT_TYPE_MAPPING[raw_type_str]
             is_unknown = False
         else:
