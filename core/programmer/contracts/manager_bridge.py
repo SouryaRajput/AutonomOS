@@ -41,6 +41,7 @@ from core.programmer.errors import (
 from core.programmer.types import (
     AcceptanceCriterionType,
     AcceptanceStatus,
+    ManagerIterationDecision,
     ProgrammerActionType,
     ProgrammerBlockerCategory,
     ProgrammerBlockerSeverity,
@@ -48,6 +49,13 @@ from core.programmer.types import (
     ProgrammerExecutionStatus,
     ProgrammerResultStatus,
     ProgrammerWorkOrderStatus,
+)
+from core.programmer.contracts.delivery import DeliveryPackage
+from core.programmer.contracts.feedback import EngineeringFeedback
+from core.programmer.contracts.iteration import (
+    EngineeringIterationCoordinator,
+    IterationOutcome,
+    PriorEngineeringContext,
 )
 
 logger = logging.getLogger("AutonomOS.ProgrammerManagerBridge")
@@ -543,6 +551,92 @@ class ProgrammerManagerBridge:
             )
 
         return result.to_worker_output()
+    def orchestrate_iteration(
+        self,
+        base_work_order: ProgrammerWorkOrder,
+        decision: ManagerIterationDecision,
+        feedback_items: Optional[Sequence[EngineeringFeedback]] = None,
+        accepted_feedback_ids: Optional[Sequence[str]] = None,
+        previous_execution: Optional[ProgrammerExecution] = None,
+        previous_delivery: Optional[DeliveryPackage] = None,
+        previous_result: Optional[ProgrammerResult] = None,
+        new_technical_requirements: Optional[Sequence[str]] = None,
+        new_acceptance_criteria: Optional[Sequence[Any]] = None,
+        modified_acceptance_criteria: Optional[Sequence[Any]] = None,
+        removed_acceptance_criteria_ids: Optional[Sequence[str]] = None,
+        adopt_suggestions_as_requirements: bool = False,
+        manager_notes: str = "",
+        objective: Optional[str] = None,
+        stale_work_order_ids: Optional[Sequence[str]] = None,
+        allowed_paths: Optional[list[str]] = None,
+        writable_paths: Optional[list[str]] = None,
+        read_only_paths: Optional[list[str]] = None,
+        forbidden_paths: Optional[list[str]] = None,
+        allowed_commands: Optional[list[Any]] = None,
+        iteration_budget: int = 10,
+        time_budget: int = 600,
+        metadata: Optional[dict[str, Any]] = None,
+        trace: Optional[dict[str, Any]] = None,
+        causation_id: Optional[str] = None,
+    ) -> IterationOutcome:
+        """
+        Manager orchestrates an engineering iteration cycle based on prior outputs and worker feedback.
+        Delegates evaluation to EngineeringIterationCoordinator.
+        If a revised ProgrammerWorkOrder is generated, records it and emits PROGRAMMER_REQUESTED.
+        """
+        outcome = EngineeringIterationCoordinator.orchestrate_iteration(
+            base_work_order=base_work_order,
+            decision=decision,
+            feedback_items=feedback_items,
+            accepted_feedback_ids=accepted_feedback_ids,
+            previous_execution=previous_execution,
+            previous_delivery=previous_delivery,
+            previous_result=previous_result,
+            new_technical_requirements=new_technical_requirements,
+            new_acceptance_criteria=new_acceptance_criteria,
+            modified_acceptance_criteria=modified_acceptance_criteria,
+            removed_acceptance_criteria_ids=removed_acceptance_criteria_ids,
+            adopt_suggestions_as_requirements=adopt_suggestions_as_requirements,
+            manager_notes=manager_notes,
+            objective=objective,
+            stale_work_order_ids=stale_work_order_ids,
+            allowed_paths=allowed_paths,
+            writable_paths=writable_paths,
+            read_only_paths=read_only_paths,
+            forbidden_paths=forbidden_paths,
+            allowed_commands=allowed_commands,
+            iteration_budget=iteration_budget,
+            time_budget=time_budget,
+            metadata=metadata,
+            trace=trace,
+        )
+
+        if outcome.revised_work_order:
+            revised_wo = outcome.revised_work_order
+            self.work_orders[revised_wo.work_order_id] = revised_wo
+            self.emit_event(
+                event_type=EventType.PROGRAMMER_REQUESTED,
+                payload={
+                    "work_order_id": revised_wo.work_order_id,
+                    "manager_task_id": revised_wo.manager_task_id,
+                    "parent_work_order_id": revised_wo.parent_work_order_id,
+                    "revision_number": revised_wo.revision_number,
+                    "objective": revised_wo.objective,
+                    "decision": outcome.decision.value if hasattr(outcome.decision, "value") else str(outcome.decision),
+                    "allowed_paths": revised_wo.allowed_paths,
+                    "writable_paths": revised_wo.writable_paths,
+                    "iteration_budget": revised_wo.iteration_budget,
+                    "time_budget": revised_wo.time_budget,
+                    "acceptance_criteria_count": len(revised_wo.acceptance_criteria),
+                },
+                project_id=revised_wo.project_id,
+                task_id=revised_wo.manager_task_id,
+                correlation_id=revised_wo.correlation_id,
+                causation_id=causation_id,
+                source=EventSource.MANAGER,
+            )
+
+        return outcome
 
 
 class FakeProgrammerWorker:

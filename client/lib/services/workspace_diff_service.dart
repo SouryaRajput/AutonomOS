@@ -72,7 +72,7 @@ class WorkspaceDiffService extends ChangeNotifier {
     required String? oldContent,
     required String newContent,
   }) {
-    if (relativePath.isEmpty || _activePath.isEmpty) return;
+    if (relativePath.isEmpty) return;
 
     WorkspaceFileDiff diff;
     if (oldContent == null || oldContent.isEmpty) {

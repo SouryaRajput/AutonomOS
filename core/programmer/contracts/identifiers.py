@@ -42,6 +42,14 @@ RISK_ASSESSMENT_ID_PREFIX = "prasm-"
 PLAN_VALIDATION_RESULT_ID_PREFIX = "pvr-"
 SUPERVISION_RECORD_ID_PREFIX = "psup-"
 PLAN_DEVIATION_ID_PREFIX = "pdev-"
+HANDOFF_ID_PREFIX = "hand-"
+FEEDBACK_ID_PREFIX = "pfbk-"
+PRODUCT_ARTIFACT_ID_PREFIX = "part-"
+SCHEMA_ID_PREFIX = "psch-"
+CONFIGURATION_ID_PREFIX = "pcfg-"
+DEPLOYMENT_READINESS_ID_PREFIX = "pread-"
+ENVIRONMENT_REQUIREMENT_ID_PREFIX = "penv-"
+DEPLOYMENT_HANDOFF_ID_PREFIX = "pdhand-"
 
 ALL_PROGRAMMER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -79,6 +87,14 @@ ALL_PROGRAMMER_PREFIXES = (
     PLAN_VALIDATION_RESULT_ID_PREFIX,
     SUPERVISION_RECORD_ID_PREFIX,
     PLAN_DEVIATION_ID_PREFIX,
+    HANDOFF_ID_PREFIX,
+    FEEDBACK_ID_PREFIX,
+    PRODUCT_ARTIFACT_ID_PREFIX,
+    SCHEMA_ID_PREFIX,
+    CONFIGURATION_ID_PREFIX,
+    DEPLOYMENT_READINESS_ID_PREFIX,
+    ENVIRONMENT_REQUIREMENT_ID_PREFIX,
+    DEPLOYMENT_HANDOFF_ID_PREFIX,
 )
 
 # Regex patterns: prefix followed by non-empty alphanumeric / hyphen string
@@ -927,6 +943,211 @@ def is_programmer_id(identifier: str) -> bool:
     if not isinstance(identifier, str):
         return False
     return any(identifier.startswith(prefix) for prefix in ALL_PROGRAMMER_PREFIXES)
+
+
+def new_handoff_id() -> str:
+    """Generate unique identifier for an EngineeringHandoff."""
+    return f"{HANDOFF_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_handoff_id(handoff_id: str) -> None:
+    """
+    Validate that handoff_id starts with 'hand-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(handoff_id, str) or not handoff_id.startswith(HANDOFF_ID_PREFIX) or len(handoff_id) <= len(HANDOFF_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="handoff_id",
+            identifier_value=str(handoff_id),
+            expected_prefix=HANDOFF_ID_PREFIX,
+        )
+    suffix = handoff_id[len(HANDOFF_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="handoff_id",
+            identifier_value=str(handoff_id),
+            expected_prefix=HANDOFF_ID_PREFIX,
+        )
+
+
+def new_feedback_id() -> str:
+    """Generate unique identifier for an EngineeringFeedback."""
+    return f"{FEEDBACK_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_feedback_id(feedback_id: str) -> None:
+    """
+    Validate that feedback_id starts with 'pfbk-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(feedback_id, str) or not feedback_id.startswith(FEEDBACK_ID_PREFIX) or len(feedback_id) <= len(FEEDBACK_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="feedback_id",
+            identifier_value=str(feedback_id),
+            expected_prefix=FEEDBACK_ID_PREFIX,
+        )
+    suffix = feedback_id[len(FEEDBACK_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="feedback_id",
+            identifier_value=str(feedback_id),
+            expected_prefix=FEEDBACK_ID_PREFIX,
+        )
+
+
+def new_product_artifact_id() -> str:
+    """Generate unique identifier for a ProductArtifact."""
+    return f"{PRODUCT_ARTIFACT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_product_artifact_id(artifact_id: str) -> None:
+    """
+    Validate that artifact_id starts with 'part-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(artifact_id, str) or not artifact_id.startswith(PRODUCT_ARTIFACT_ID_PREFIX) or len(artifact_id) <= len(PRODUCT_ARTIFACT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="artifact_id",
+            identifier_value=str(artifact_id),
+            expected_prefix=PRODUCT_ARTIFACT_ID_PREFIX,
+        )
+    suffix = artifact_id[len(PRODUCT_ARTIFACT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="artifact_id",
+            identifier_value=str(artifact_id),
+            expected_prefix=PRODUCT_ARTIFACT_ID_PREFIX,
+        )
+
+
+def new_schema_id() -> str:
+    """Generate unique identifier for a RuntimeConfigurationSchema."""
+    return f"{SCHEMA_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_schema_id(schema_id: str) -> None:
+    """
+    Validate that schema_id starts with 'psch-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(schema_id, str) or not schema_id.startswith(SCHEMA_ID_PREFIX) or len(schema_id) <= len(SCHEMA_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="schema_id",
+            identifier_value=str(schema_id),
+            expected_prefix=SCHEMA_ID_PREFIX,
+        )
+    suffix = schema_id[len(SCHEMA_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="schema_id",
+            identifier_value=str(schema_id),
+            expected_prefix=SCHEMA_ID_PREFIX,
+        )
+
+
+def new_configuration_id() -> str:
+    """Generate unique identifier for a RuntimeConfiguration."""
+    return f"{CONFIGURATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_configuration_id(configuration_id: str) -> None:
+    """
+    Validate that configuration_id starts with 'pcfg-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(configuration_id, str) or not configuration_id.startswith(CONFIGURATION_ID_PREFIX) or len(configuration_id) <= len(CONFIGURATION_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="configuration_id",
+            identifier_value=str(configuration_id),
+            expected_prefix=CONFIGURATION_ID_PREFIX,
+        )
+    suffix = configuration_id[len(CONFIGURATION_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="configuration_id",
+            identifier_value=str(configuration_id),
+            expected_prefix=CONFIGURATION_ID_PREFIX,
+        )
+
+
+def new_deployment_readiness_id() -> str:
+    """Generate unique identifier for a DeploymentReadinessResult."""
+    return f"{DEPLOYMENT_READINESS_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_deployment_readiness_id(readiness_id: str) -> None:
+    """
+    Validate that readiness_id starts with 'pread-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(readiness_id, str) or not readiness_id.startswith(DEPLOYMENT_READINESS_ID_PREFIX) or len(readiness_id) <= len(DEPLOYMENT_READINESS_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="readiness_id",
+            identifier_value=str(readiness_id),
+            expected_prefix=DEPLOYMENT_READINESS_ID_PREFIX,
+        )
+    suffix = readiness_id[len(DEPLOYMENT_READINESS_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="readiness_id",
+            identifier_value=str(readiness_id),
+            expected_prefix=DEPLOYMENT_READINESS_ID_PREFIX,
+        )
+
+
+def new_environment_requirement_id() -> str:
+    """Generate unique identifier for an EnvironmentRequirement."""
+    return f"{ENVIRONMENT_REQUIREMENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_environment_requirement_id(requirement_id: str) -> None:
+    """
+    Validate that requirement_id starts with 'penv-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(requirement_id, str) or not requirement_id.startswith(ENVIRONMENT_REQUIREMENT_ID_PREFIX) or len(requirement_id) <= len(ENVIRONMENT_REQUIREMENT_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="requirement_id",
+            identifier_value=str(requirement_id),
+            expected_prefix=ENVIRONMENT_REQUIREMENT_ID_PREFIX,
+        )
+    suffix = requirement_id[len(ENVIRONMENT_REQUIREMENT_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="requirement_id",
+            identifier_value=str(requirement_id),
+            expected_prefix=ENVIRONMENT_REQUIREMENT_ID_PREFIX,
+        )
+
+
+def new_deployment_handoff_id() -> str:
+    """Generate unique identifier for a DeploymentHandoff."""
+    return f"{DEPLOYMENT_HANDOFF_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def validate_deployment_handoff_id(handoff_id: str) -> None:
+    """
+    Validate that handoff_id starts with 'pdhand-' and conforms to identifier constraints.
+    Raises InvalidProgrammerIdError if invalid.
+    """
+    if not isinstance(handoff_id, str) or not handoff_id.startswith(DEPLOYMENT_HANDOFF_ID_PREFIX) or len(handoff_id) <= len(DEPLOYMENT_HANDOFF_ID_PREFIX):
+        raise InvalidProgrammerIdError(
+            identifier_type="handoff_id",
+            identifier_value=str(handoff_id),
+            expected_prefix=DEPLOYMENT_HANDOFF_ID_PREFIX,
+        )
+    suffix = handoff_id[len(DEPLOYMENT_HANDOFF_ID_PREFIX):]
+    if not _ID_PATTERN.match(suffix):
+        raise InvalidProgrammerIdError(
+            identifier_type="handoff_id",
+            identifier_value=str(handoff_id),
+            expected_prefix=DEPLOYMENT_HANDOFF_ID_PREFIX,
+        )
+
+
+
+
+
 
 
 

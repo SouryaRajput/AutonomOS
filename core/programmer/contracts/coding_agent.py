@@ -216,7 +216,7 @@ class CodingAgentEvent:
             "event_id": self.event_id,
             "execution_id": self.execution_id,
             "work_order_id": self.work_order_id,
-            "event_type": self.event_type.value if isinstance(self.event_type, CodingAgentEventType) else str(self.event_type),
+            "event_type": self.event_type.value if hasattr(self.event_type, "value") else str(self.event_type),
             "payload": dict(self.payload),
             "sequence_number": self.sequence_number,
             "timestamp": self.timestamp,

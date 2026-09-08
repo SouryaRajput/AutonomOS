@@ -7,6 +7,7 @@ from typing import Any, Optional, Union
 from core.programmer.contracts.coding_agent import CodingAgentRequest
 from core.programmer.contracts.execution_context import ProgrammerExecutionContext
 from core.programmer.contracts.work_order import ProgrammerWorkOrder
+from core.programmer.contracts.iteration import PriorEngineeringContext
 from core.programmer.errors import (
     ProgrammerError,
     ProgrammerLineageError,
@@ -351,6 +352,20 @@ class ProgrammerPromptBuilder:
             req_checks = getattr(plan, 'required_checks', [])
             if req_checks:
                 lines.append(f"Required Checks: {', '.join(req_checks)}")
+
+        # Dimension 17: Prior Engineering Iteration Context (Phase 8.6)
+        prior_ctx = PriorEngineeringContext.from_work_order(work_order)
+        if not prior_ctx and (work_order.revision_number > 1 or work_order.parent_work_order_id):
+            prior_ctx = PriorEngineeringContext(
+                previous_work_order_id=work_order.parent_work_order_id or "unknown",
+                previously_implemented=[f"Revision {work_order.revision_number - 1} implemented initial work"],
+                remaining_to_fix=["Resolve updated requirements or criteria"],
+            )
+
+        if prior_ctx:
+            lines.append("")
+            lines.append("# 17. PRIOR ENGINEERING ITERATION CONTEXT")
+            lines.append(prior_ctx.to_prompt_markdown())
 
         return "\n".join(lines)
 

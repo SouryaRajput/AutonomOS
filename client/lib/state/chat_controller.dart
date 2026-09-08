@@ -70,8 +70,8 @@ UserIntent classifyUserIntent({
       lower.contains('create implementation plan') ||
       lower.contains('generate the plan') ||
       lower.contains('generate implementation plan') ||
-      lower.contains('let\'s do it') ||
-      lower.contains('let\'s proceed') ||
+      lower.contains("let's do it") ||
+      lower.contains("let's proceed") ||
       lower.contains('go for it');
 
   if (hasPendingPlanProposal && isProceedAffirmative) {
@@ -108,49 +108,7 @@ UserIntent classifyUserIntent({
     return UserIntent.summarizeFindings;
   }
 
-  // 3. Complex Feature / Interactive 3D / Project Creation Requests
-  // Matches both imperatives ("create...", "build...") and polite requests ("can you create...", "could you build...")
-  final isCreationVerb = RegExp(
-    r"^(?:can you|could you|would you|please|will you|help me|can we|i want you to|i want to|i need you to|let's)?\s*(create|build|develop|make|implement|code|generate|design|craft|construct|setup|set up|rebuild|revamp)\b",
-    caseSensitive: false,
-  ).hasMatch(clean);
-
-  final isComplexFeatureRequest = isCreationVerb &&
-      (lower.contains('website') ||
-          lower.contains('portfolio') ||
-          lower.contains('3d') ||
-          lower.contains('animation') ||
-          lower.contains('interactive') ||
-          lower.contains('landing page') ||
-          lower.contains('dashboard') ||
-          lower.contains('canvas') ||
-          lower.contains('three.js') ||
-          lower.contains('threejs') ||
-          lower.contains('scene') ||
-          lower.contains('latest technologies') ||
-          lower.contains('inspiration') ||
-          lower.contains('ui/ux') ||
-          lower.contains('full stack') ||
-          clean.split(RegExp(r'\s+')).length >= 10);
-
-  if (isComplexFeatureRequest) {
-    return UserIntent.complexCreation;
-  }
-
-  // 4. Direct Code Modification / Specific File Instructions
-  // e.g. "write code to add user authentication", "create file src/components/Header.tsx", "fix bug in ..."
-  final isCodeImperative = RegExp(
-    r'\b(create file|edit file|write code|modify file|fix bug|refactor|add component|build component|implement function|fix error|update file|add route|generate code)\b',
-    caseSensitive: false,
-  ).hasMatch(clean) &&
-      !lower.contains('research') &&
-      !lower.contains('audit');
-
-  if (isCodeImperative || (isCreationVerb && !lower.contains('research') && !lower.contains('audit'))) {
-    return UserIntent.codeImplementation;
-  }
-
-  // 5. Greetings, status checks, acknowledgments
+  // 3. Greetings, status checks, acknowledgments
   final isGreetingOrThanks = RegExp(
     r'^(hi|hello|hey|greetings|thanks|thank you|good morning|good evening|cool|nice|got it)[\s!.]*$',
     caseSensitive: false,
@@ -165,16 +123,115 @@ UserIntent classifyUserIntent({
     return UserIntent.simpleQuestion;
   }
 
-  // 6. Explicit command to conduct new deep research / audit from scratch
-  final isExplicitResearchCommand = RegExp(
-    r'^(research\b|conduct research|do research|run research|audit\b|conduct audit|investigate\b|deep dive\b|explore the codebase|scan repository)',
+  // 4. Research & Discovery Requests (Research intent takes precedence over creation!)
+  // Matches polite or direct research imperatives:
+  // e.g. "can you research...", "could you find...", "research about...", "audit...", "investigate..."
+  final hasResearchVerb = RegExp(
+    r"^(?:can you|could you|would you|please|will you|help me|can we|i want you to|i want to|i need you to|let's|i'd like to)?\s*(research|conduct research|do research|run research|investigate|analyze|analyse|audit|explore|deep dive|look into|search for|find out|find)\b",
     caseSensitive: false,
-  ).hasMatch(clean) ||
-      (lower.contains('research') && (lower.contains('architecture') || lower.contains('codebase') || lower.contains('stack') || lower.contains('security') || lower.contains('performance'))) ||
-      (lower.contains('audit') && (lower.contains('security') || lower.contains('performance') || lower.contains('codebase')));
+  ).hasMatch(clean);
 
-  if (isExplicitResearchCommand) {
+  final hasBusinessOrMarketResearchTopic = lower.contains('research about') ||
+      lower.contains('research on') ||
+      lower.contains('market research') ||
+      lower.contains('complaning about') ||
+      lower.contains('complaining about') ||
+      lower.contains('pain point') ||
+      lower.contains('pain points') ||
+      lower.contains('business problem') ||
+      lower.contains('business problems') ||
+      lower.contains('customer complaints') ||
+      lower.contains('user problems') ||
+      lower.contains('who to pitch') ||
+      lower.contains('pitch to sell') ||
+      lower.contains('whom i can pitch') ||
+      lower.contains('who i can pitch') ||
+      lower.contains('find emails') ||
+      lower.contains('contact details') ||
+      lower.contains('reddit profiles') ||
+      lower.contains('instagram profiles') ||
+      lower.contains('target audience') ||
+      lower.contains('competitor analysis') ||
+      lower.contains('pricing model') ||
+      lower.contains('do not hallucinate');
+
+  final hasCodebaseResearchTopic = lower.contains('research') &&
+      (lower.contains('architecture') ||
+          lower.contains('codebase') ||
+          lower.contains('stack') ||
+          lower.contains('security') ||
+          lower.contains('performance') ||
+          lower.contains('options') ||
+          lower.contains('libraries') ||
+          lower.contains('state management'));
+
+  final hasAuditTopic = lower.contains('audit') &&
+      (lower.contains('security') ||
+          lower.contains('performance') ||
+          lower.contains('codebase') ||
+          lower.contains('auth') ||
+          lower.contains('architecture'));
+
+  final hasDeepDiveTopic = lower.contains('deep dive into') ||
+      lower.contains('investigate memory') ||
+      lower.contains('investigate performance') ||
+      lower.contains('explore the codebase');
+
+  final isExplicitResearch = hasResearchVerb ||
+      hasBusinessOrMarketResearchTopic ||
+      hasCodebaseResearchTopic ||
+      hasAuditTopic ||
+      hasDeepDiveTopic;
+
+  // 5. Code writing instructions / Direct Code Modification / Specific File Instructions
+  // e.g. "write code to add user authentication", "create file src/components/Header.tsx", "fix bug in ..."
+  final isExplicitCodeImperative = RegExp(
+    r'\b(create file|edit file|write code|modify file|fix bug|refactor|add component|build component|implement function|fix error|update file|add route|generate code)\b',
+    caseSensitive: false,
+  ).hasMatch(clean);
+
+  if (isExplicitCodeImperative && !isExplicitResearch) {
+    return UserIntent.codeImplementation;
+  }
+
+  // 6. Complex Feature / Interactive 3D / Project Creation Requests
+  // Matches explicit creation verbs targeting software deliverables:
+  final isCreationVerb = RegExp(
+    r"^(?:can you|could you|would you|please|will you|help me|can we|i want you to|i want to|i need you to|let's)?\s*(create|build|develop|make|implement|code|generate|design|craft|construct|setup|set up|rebuild|revamp)\b",
+    caseSensitive: false,
+  ).hasMatch(clean);
+
+  final isTargetingSoftwareEntity = lower.contains('website') ||
+      lower.contains('portfolio') ||
+      lower.contains('3d') ||
+      lower.contains('landing page') ||
+      lower.contains('dashboard') ||
+      lower.contains('web app') ||
+      lower.contains('canvas') ||
+      lower.contains('three.js') ||
+      lower.contains('threejs') ||
+      lower.contains('scene') ||
+      lower.contains('ui/ux') ||
+      lower.contains('full stack') ||
+      lower.contains('fullstack') ||
+      lower.contains('mobile app');
+
+  final isComplexFeatureRequest = isCreationVerb &&
+      isTargetingSoftwareEntity &&
+      !isExplicitResearch;
+
+  if (isComplexFeatureRequest) {
+    return UserIntent.complexCreation;
+  }
+
+  // If research was explicitly requested, route to complexResearch (strictly NO code!)
+  if (isExplicitResearch) {
     return UserIntent.complexResearch;
+  }
+
+  // Targeted code creation verb without being a full complex application
+  if (isCreationVerb && !isExplicitResearch) {
+    return UserIntent.codeImplementation;
   }
 
   // 7. Informational Questions & Follow-ups (Simple Question)
@@ -183,12 +240,70 @@ UserIntent classifyUserIntent({
       RegExp(r'^(what|where|how|why|who|when|which|is there|are there)\b', caseSensitive: false).hasMatch(clean) ||
       RegExp(r'^(?:can you|could you|would you|please)\s+(?:explain|describe|tell me|clarify|elaborate|show me|list|detail)\b', caseSensitive: false).hasMatch(clean);
 
-  if (isInformationalQuestion || clean.split(RegExp(r'\s+')).length <= 6) {
+  if (isInformationalQuestion && clean.split(RegExp(r'\s+')).length <= 15) {
     return UserIntent.simpleQuestion;
   }
 
-  // 8. Default fallback for substantial prompts
-  return UserIntent.complexCreation;
+  // 8. Safe Fallback: Substantial prompts (> 12 words) without an explicit coding imperative
+  // must default to complexResearch (Manager + Specialist Researcher, NO code), NEVER complexCreation!
+  if (clean.split(RegExp(r'\s+')).length > 12) {
+    return UserIntent.complexResearch;
+  }
+
+  // Short queries default to direct Manager answer
+  return UserIntent.simpleQuestion;
+}
+
+String extractTopicTitle(String prompt, {int maxWords = 8}) {
+  var clean = prompt.trim();
+  final openerRegex = RegExp(
+    r"^(?:can you|could you|would you|please|will you|help me|can we|i want you to|i want to|i need you to|let's|i'd like you to|i'd like to)\s+",
+    caseSensitive: false,
+  );
+  clean = clean.replaceFirst(openerRegex, '').trim();
+
+  final actionRegex = RegExp(
+    r"^(?:research about|research on|research into|research|conduct research on|conduct research|investigate|analyze|analyse|audit|explore|find out about|find out|find|create an?|build an?|develop an?|make an?|implement an?)\s+",
+    caseSensitive: false,
+  );
+  final withoutAction = clean.replaceFirst(actionRegex, '').trim();
+  final target = withoutAction.isNotEmpty ? withoutAction : clean;
+
+  final firstPart = target.split(RegExp(r'[?.!\n]|(?:\b(?:which|that|because|also|and charge)\b)'))[0].trim();
+  final words = firstPart.split(RegExp(r'\s+')).where((w) => w.isNotEmpty).toList();
+  if (words.isEmpty) return 'Requested Objective';
+  if (words.length <= maxWords) return words.join(' ');
+  return '${words.take(maxWords).join(' ')}…';
+}
+
+String buildTaskExecutionSummary({
+  required String taskGoal,
+  required List<String> workersEngaged,
+  required List<String> actionsCompleted,
+  required List<String> deliverables,
+  String? nextRecommendedStep,
+}) {
+  final buffer = StringBuffer();
+  buffer.writeln('\n\n---\n### 📋 Task Execution Summary\n');
+  buffer.writeln('- **Goal**: $taskGoal');
+  buffer.writeln('- **Workers Engaged**: ${workersEngaged.join(', ')}');
+  if (actionsCompleted.isNotEmpty) {
+    buffer.writeln('- **Actions Completed**:');
+    for (final action in actionsCompleted) {
+      final cleanAction = action.replaceFirst(RegExp(r'^[✓•\-\s]+'), '').trim();
+      buffer.writeln('  - $cleanAction');
+    }
+  }
+  if (deliverables.isNotEmpty) {
+    buffer.writeln('- **Deliverables & Artifacts**:');
+    for (final item in deliverables) {
+      buffer.writeln('  - $item');
+    }
+  }
+  if (nextRecommendedStep != null && nextRecommendedStep.trim().isNotEmpty) {
+    buffer.writeln('- **Recommended Next Step**: ${nextRecommendedStep.trim()}');
+  }
+  return buffer.toString();
 }
 
 class ChatController extends ChangeNotifier {
@@ -694,12 +809,36 @@ class ChatController extends ChangeNotifier {
             content: 'Engineered and deployed implementation files directly to workspace.',
           );
 
-          finalContent = _buildProceedPlanSummary(
+          final planTopic = extractTopicTitle(cleanPrompt);
+          final proceedSummary = buildTaskExecutionSummary(
+            taskGoal: 'Execute implementation roadmap for "$planTopic"',
+            workersEngaged: const [
+              'Manager (Executive Orchestrator)',
+              'Programmer (Senior Engineer)',
+              'QA Tester (Quality Engineer)',
+            ],
+            actionsCompleted: [
+              'Retrieved prior research and implementation tickets from conversation memory',
+              'Manager formulated implementation specifications & QA matrix',
+              'Programmer engineered code modifications according to specification',
+              'Deployed ${writtenFiles.length} files to workspace',
+            ],
+            deliverables: [
+              if (writtenFiles.isNotEmpty)
+                'Phase A files deployed: ${writtenFiles.map((f) => '`$f`').join(', ')}'
+              else
+                'Implementation roadmap executed',
+              'QA matrix and task specifications recorded in `.autonomos/research/evidence/`',
+            ],
+            nextRecommendedStep: 'Review the deployed changes using "Review Changes" in the top bar.',
+          );
+
+          finalContent = '${_buildProceedPlanSummary(
             userPrompt: cleanPrompt,
             implementationPlan: planContent.isNotEmpty ? planContent : rawAiResponse,
             writtenFiles: writtenFiles,
             activeWorkingPath: activePath,
-          );
+          )}$proceedSummary';
 
           finalCompletedActions = [
             '✓ Research findings retrieved from conversation memory',
@@ -810,6 +949,27 @@ class ChatController extends ChangeNotifier {
           if (finalContent.isEmpty) {
             finalContent = rawAiResponse;
           }
+
+          final summaryTopic = extractTopicTitle(cleanPrompt);
+          final taskSummary = buildTaskExecutionSummary(
+            taskGoal: cleanPrompt,
+            workersEngaged: const [
+              'Manager (Executive Orchestrator)',
+            ],
+            actionsCompleted: [
+              if (assistantMessages.isNotEmpty)
+                'Retrieved prior research findings and context from conversation memory'
+              else
+                'Inspected workspace structure and configurations',
+              'Manager synthesized executive summary and key takeaways for "$summaryTopic"',
+            ],
+            deliverables: const [
+              'Executive synthesis delivered directly in conversation',
+            ],
+            nextRecommendedStep: 'Let me know if you would like to proceed with implementation or explore any item in greater detail.',
+          );
+          finalContent = '$finalContent$taskSummary';
+
           _persistResearchArtifacts(
             activePath: activePath,
             projectName: projectName,
@@ -961,16 +1121,18 @@ class ChatController extends ChangeNotifier {
           );
           notifyListeners();
 
+          final codeTopic = extractTopicTitle(cleanPrompt);
+
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Analyzing code requirements for "$cleanPrompt" and dispatching to Senior Programmer.',
+            content: 'Analyzing code requirements for "$codeTopic" and dispatching to Senior Programmer.',
           );
 
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Programmer',
-            content: 'Engineering implementation and applying code modifications to workspace.',
+            content: 'Engineering implementation and applying code modifications for $codeTopic.',
           );
 
           final codeResult = await _inferenceService.generateProgrammerCode(
@@ -1002,14 +1164,36 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Programmer',
-            content: 'Completed code implementation and deployed modifications to workspace files.',
+            content: 'Completed code implementation and deployed modifications for $codeTopic.',
           );
 
-          finalContent = _buildCodeImplementationSummary(
+          final codeSummary = buildTaskExecutionSummary(
+            taskGoal: cleanPrompt,
+            workersEngaged: const [
+              'Manager (Executive Orchestrator)',
+              'Programmer (Senior Engineer)',
+            ],
+            actionsCompleted: [
+              'Inspected workspace structure',
+              'Manager formulated code requirements for "$codeTopic"',
+              'Programmer engineered code modifications',
+              'Deployed ${writtenFiles.length} files to workspace',
+            ],
+            deliverables: [
+              if (writtenFiles.isNotEmpty)
+                'Modified/created files: ${writtenFiles.map((f) => '`$f`').join(', ')}'
+              else
+                'Workspace code evaluated',
+            ],
+            nextRecommendedStep: 'Inspect the changes using the "Review Changes" button in the top bar.',
+          );
+
+          finalContent = '${_buildCodeImplementationSummary(
             userPrompt: cleanPrompt,
             writtenFiles: writtenFiles,
             activeWorkingPath: activePath,
-          );
+            topicTitle: codeTopic,
+          )}$codeSummary';
 
           finalCompletedActions = [
             '✓ Inspected workspace structure',
@@ -1040,8 +1224,11 @@ class ChatController extends ChangeNotifier {
           // -------------------------------------------------------------
           // INTENT: MULTI-AGENT CREATION (MANAGER -> RESEARCHER -> PROGRAMMER -> DISK)
           // -------------------------------------------------------------
+          final topicTitle = extractTopicTitle(cleanPrompt);
+          final is3d = cleanPrompt.toLowerCase().contains('3d') || cleanPrompt.toLowerCase().contains('portfolio');
+
           _currentActivityTitle = 'Manager: Formulating Architecture & Brief…';
-          _currentActivitySubtitle = 'Analyzing project scope & delegating research to Specialist Researcher';
+          _currentActivitySubtitle = 'Analyzing project scope & delegating research for "$topicTitle"';
           _currentActivity = ExecutionActivity(
             activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1051,7 +1238,7 @@ class ChatController extends ChangeNotifier {
             title: 'Manager — Orchestrating',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Decomposing request & delegating research to Specialist Researcher…',
+            currentAction: 'Decomposing request & delegating research for "$topicTitle"…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
@@ -1088,7 +1275,7 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Analyzing requirements for "$cleanPrompt" and formulating architecture roadmap.',
+            content: 'Analyzing requirements for "$topicTitle" and formulating architecture roadmap.',
           );
 
           final managerPlanResult = await _inferenceService.generateManagerPlan(
@@ -1109,11 +1296,15 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Architecture roadmap prepared. Delegated technical research to Specialist Researcher.',
+            content: 'Architecture roadmap prepared. Delegated technical research for $topicTitle to Specialist Researcher.',
           );
 
-          _currentActivityTitle = 'Researcher: Investigating 3D Tech & Inspirations…';
-          _currentActivitySubtitle = 'Evaluating Three.js, shaders, particle systems & portfolio architectures';
+          _currentActivityTitle = is3d
+              ? 'Researcher: Investigating 3D Tech & Inspirations…'
+              : 'Researcher: Investigating $topicTitle…';
+          _currentActivitySubtitle = is3d
+              ? 'Evaluating Three.js, shaders, particle systems & portfolio architectures'
+              : 'Evaluating architecture patterns, dependencies & specifications for $topicTitle';
           _currentActivity = ExecutionActivity(
             activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1123,15 +1314,17 @@ class ChatController extends ChangeNotifier {
             title: 'Researcher — Investigating',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Analyzing 3D WebGL libraries, animations & portfolio inspirations…',
+            currentAction: is3d
+                ? 'Analyzing 3D WebGL libraries, animations & portfolio inspirations…'
+                : 'Analyzing technical requirements & patterns for $topicTitle…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
               '✓ Manager formulated execution plan & delegated to Researcher',
             ],
             filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
-            workers: const [
-              WorkerActivityItem(
+            workers: [
+              const WorkerActivityItem(
                 workerId: 'worker.manager',
                 name: 'Manager',
                 role: 'Executive Orchestrator',
@@ -1143,9 +1336,11 @@ class ChatController extends ChangeNotifier {
                 name: 'Researcher',
                 role: 'Specialist',
                 status: 'RUNNING',
-                currentAction: 'Researching 3D technologies, WebGL & portfolio inspirations',
+                currentAction: is3d
+                    ? 'Researching 3D technologies, WebGL & portfolio inspirations'
+                    : 'Researching technical patterns & specifications for $topicTitle',
               ),
-              WorkerActivityItem(
+              const WorkerActivityItem(
                 workerId: 'worker.programmer',
                 name: 'Programmer',
                 role: 'Senior Engineer',
@@ -1160,7 +1355,9 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Researcher',
-            content: 'Investigating 3D WebGL libraries, Three.js particle systems, and modern portfolio interaction patterns.',
+            content: is3d
+                ? 'Investigating 3D WebGL libraries, Three.js particle systems, and modern portfolio interaction patterns.'
+                : 'Investigating technical requirements, component architecture, and implementation patterns for $topicTitle.',
           );
 
           final researcherResult = await _inferenceService.generateResearcherFindings(
@@ -1181,17 +1378,21 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Researcher',
-            content: 'Completed research: Selected Three.js WebGL canvas with procedural particle field and responsive glassmorphic cards.',
+            content: is3d
+                ? 'Completed research: Selected Three.js WebGL canvas with procedural particle field and responsive glassmorphic cards.'
+                : 'Completed research: Formulated architectural specifications and component design for $topicTitle.',
           );
 
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Dispatching work order to Senior Programmer to engineer 3D scene and deploy files to workspace.',
+            content: 'Dispatching work order to Senior Programmer to implement $topicTitle and deploy files to workspace.',
           );
 
           _currentActivityTitle = 'Programmer: Generating & Deploying Code…';
-          _currentActivitySubtitle = 'Engineering 3D canvas, animations, and deploying files to workspace';
+          _currentActivitySubtitle = is3d
+              ? 'Engineering 3D canvas, animations, and deploying files to workspace'
+              : 'Engineering code implementation and deploying files for $topicTitle';
           _currentActivity = ExecutionActivity(
             activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1206,7 +1407,10 @@ class ChatController extends ChangeNotifier {
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
               '✓ Manager formulated execution plan & delegated to Researcher',
-              '✓ Researcher delivered 3D technology & portfolio UX dossier',
+              if (is3d)
+                '✓ Researcher delivered 3D technology & portfolio UX dossier'
+              else
+                '✓ Researcher delivered technical patterns & specifications for $topicTitle',
               '✓ Manager assigned implementation tasks to Senior Programmer',
             ],
             filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
@@ -1240,7 +1444,9 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Programmer',
-            content: 'Engineering Three.js WebGL scene, particle physics, and responsive CSS styling.',
+            content: is3d
+                ? 'Engineering Three.js WebGL scene, particle physics, and responsive CSS styling.'
+                : 'Engineering implementation and deploying code files for $topicTitle.',
           );
 
           final programmerResult = await _inferenceService.generateProgrammerCode(
@@ -1261,13 +1467,15 @@ class ChatController extends ChangeNotifier {
           final writtenFiles = _deployProgrammerFiles(
             activePath: activePath,
             rawCode: rawProgrammerCode,
-            isInteractive3DRequest: true,
+            isInteractive3DRequest: is3d,
           );
 
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Programmer',
-            content: 'Engineered and deployed interactive 3D WebGL canvas (`index.html`), particle animation system (`portfolio_3d.js`), and responsive styles (`styles_3d.css`).',
+            content: is3d
+                ? 'Engineered and deployed interactive 3D WebGL canvas (`index.html`), particle animation system (`portfolio_3d.js`), and responsive styles (`styles_3d.css`).'
+                : 'Engineered and deployed ${writtenFiles.length} files to workspace for $topicTitle.',
           );
 
           final totalPromptTokens = (managerPlanResult['promptTokens'] as int? ?? 0) +
@@ -1288,18 +1496,48 @@ class ChatController extends ChangeNotifier {
             implementationPlan: cleanManagerBrief.isNotEmpty ? cleanManagerBrief : managerBrief,
           );
 
-          finalContent = _buildExecutiveWorkforceSummary(
+          final deliverablesList = <String>[
+            'Deployed ${writtenFiles.length} files to workspace: ${writtenFiles.take(4).map((f) => '`$f`').join(', ')}${writtenFiles.length > 4 ? '…' : ''}',
+            'Research dossier and technical evidence saved in `.autonomos/research/evidence/`',
+          ];
+          final creationSummary = buildTaskExecutionSummary(
+            taskGoal: cleanPrompt,
+            workersEngaged: const [
+              'Manager (Executive Orchestrator)',
+              'Researcher (Specialist)',
+              'Programmer (Senior Engineer)',
+            ],
+            actionsCompleted: [
+              'Inspected workspace structure and dependencies',
+              'Manager formulated architecture roadmap for "$topicTitle"',
+              if (is3d)
+                'Researcher evaluated Three.js, shaders, and portfolio interaction patterns'
+              else
+                'Researcher delivered technical patterns and architectural specifications',
+              'Programmer engineered and deployed ${writtenFiles.length} files to workspace',
+            ],
+            deliverables: deliverablesList,
+            nextRecommendedStep: is3d
+                ? 'Open `index.html` in your browser to explore the live 3D canvas.'
+                : 'Review the deployed changes using the "Review Changes" button in the top bar.',
+          );
+
+          finalContent = '${_buildExecutiveWorkforceSummary(
             userPrompt: cleanPrompt,
             writtenFiles: writtenFiles,
             activeWorkingPath: activePath,
             researcherDossier: cleanResearcherDossier,
-          );
+            topicTitle: topicTitle,
+          )}$creationSummary';
 
           finalCompletedActions = [
             '✓ Inspected workspace structure',
             if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
             '✓ Manager formulated architecture roadmap & delegated research',
-            '✓ Researcher investigated 3D WebGL libraries & portfolio inspirations',
+            if (is3d)
+              '✓ Researcher investigated 3D WebGL libraries & portfolio inspirations'
+            else
+              '✓ Researcher delivered technical specifications for $topicTitle',
             '✓ Manager dispatched work order to Senior Programmer',
             '✓ Programmer engineered and deployed ${writtenFiles.length} files to workspace',
           ];
@@ -1333,8 +1571,10 @@ class ChatController extends ChangeNotifier {
           // -------------------------------------------------------------
           // INTENT: MULTI-AGENT DEEP RESEARCH PIPELINE
           // -------------------------------------------------------------
+          final topicTitle = extractTopicTitle(cleanPrompt);
+
           _currentActivityTitle = 'Manager: Planning & Delegating…';
-          _currentActivitySubtitle = 'Analyzing workspace structure & formulating research brief';
+          _currentActivitySubtitle = 'Analyzing scope & formulating research brief for "$topicTitle"';
           _currentActivity = ExecutionActivity(
             activityId: 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1344,7 +1584,7 @@ class ChatController extends ChangeNotifier {
             title: 'Manager — Formulating Plan',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Decomposing request & formulating research brief for Researcher…',
+            currentAction: 'Decomposing request & formulating research brief for "$topicTitle"…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
@@ -1374,7 +1614,7 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Analyzing research scope for "$cleanPrompt" and formulating investigation roadmap.',
+            content: 'Analyzing research scope for "$topicTitle" and formulating investigation roadmap.',
           );
 
           final managerPlanResult = await _inferenceService.generateManagerPlan(
@@ -1395,11 +1635,11 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.managerMessage,
             sender: 'Manager',
-            content: 'Formulated research brief. Delegating codebase audit to Specialist Researcher.',
+            content: 'Formulated research brief. Delegating investigation of $topicTitle to Specialist Researcher.',
           );
 
-          _currentActivityTitle = 'Researcher: Investigating Codebase…';
-          _currentActivitySubtitle = 'Evaluating UI/UX patterns & component architecture';
+          _currentActivityTitle = 'Researcher: Investigating $topicTitle…';
+          _currentActivitySubtitle = 'Evaluating domain requirements, gathering evidence & analyzing patterns';
           _currentActivity = ExecutionActivity(
             activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1409,7 +1649,7 @@ class ChatController extends ChangeNotifier {
             title: 'Researcher — Investigating',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Analyzing component hierarchy & UX improvement opportunities…',
+            currentAction: 'Investigating $topicTitle & gathering evidence…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
@@ -1417,8 +1657,8 @@ class ChatController extends ChangeNotifier {
               '✓ Manager formulated execution plan & delegated task to Researcher',
             ],
             filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
-            workers: const [
-              WorkerActivityItem(
+            workers: [
+              const WorkerActivityItem(
                 workerId: 'worker.manager',
                 name: 'Manager',
                 role: 'Executive Orchestrator',
@@ -1430,7 +1670,7 @@ class ChatController extends ChangeNotifier {
                 name: 'Researcher',
                 role: 'Specialist',
                 status: 'RUNNING',
-                currentAction: 'Conducting deep codebase investigation & UX evaluation',
+                currentAction: 'Conducting deep research & evidence gathering for $topicTitle',
               ),
             ],
             isLive: true,
@@ -1440,7 +1680,7 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Researcher',
-            content: 'Scanning workspace files, dependencies, and architectural patterns.',
+            content: 'Investigating $topicTitle: gathering data, evaluating key constraints, and compiling evidence.',
           );
 
           final researcherResult = await _inferenceService.generateResearcherFindings(
@@ -1461,11 +1701,11 @@ class ChatController extends ChangeNotifier {
           _appendRealtimeAgentMessage(
             type: MessageType.workerUpdate,
             sender: 'Researcher',
-            content: 'Completed technical audit and compiled evidence dossier into `.autonomos/research/evidence/`.',
+            content: 'Completed research on $topicTitle and compiled evidence dossier into `.autonomos/research/evidence/`.',
           );
 
           _currentActivityTitle = 'Manager: Synthesizing Findings…';
-          _currentActivitySubtitle = 'Preparing executive report and implementation roadmap';
+          _currentActivitySubtitle = 'Preparing comprehensive findings and actionable recommendations for user';
           _currentActivity = ExecutionActivity(
             activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
             projectId: projectId,
@@ -1475,13 +1715,13 @@ class ChatController extends ChangeNotifier {
             title: 'Manager — Synthesizing',
             status: ActivityStatus.running,
             startTime: startNow,
-            currentAction: 'Synthesizing Researcher findings & formulating implementation roadmap…',
+            currentAction: 'Synthesizing Researcher findings & preparing executive recommendations for "$topicTitle"…',
             completedActions: [
               '✓ Inspected workspace structure',
               if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
               if (keyFilePreviews.isNotEmpty) '✓ Inspected ${keyFilePreviews.keys.join(", ")}',
               '✓ Manager formulated execution plan & delegated task to Researcher',
-              '✓ Researcher completed deep analysis of project architecture & UX patterns',
+              '✓ Researcher completed deep analysis for $topicTitle',
             ],
             filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
             workers: const [
@@ -1490,7 +1730,7 @@ class ChatController extends ChangeNotifier {
                 name: 'Manager',
                 role: 'Executive Orchestrator',
                 status: 'RUNNING',
-                currentAction: 'Synthesizing report & formulating implementation roadmap',
+                currentAction: 'Synthesizing report & formulating recommendations for user',
               ),
               WorkerActivityItem(
                 workerId: 'worker.researcher',
@@ -1503,6 +1743,12 @@ class ChatController extends ChangeNotifier {
             isLive: true,
           );
           notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.managerMessage,
+            sender: 'Manager',
+            content: 'Synthesizing research dossier for "$topicTitle" into actionable executive findings.',
+          );
 
           final synthesisResult = await _inferenceService.generateManagerSynthesis(
             baseUrl: activeProv['baseUrl'] as String? ?? '',
@@ -1535,9 +1781,35 @@ class ChatController extends ChangeNotifier {
             text = cleanResearcherDossier;
           }
           if (text.isEmpty) {
-            text = 'I inspected your project workspace and analyzed the architecture and component structure. Would you like me to formulate a concrete implementation plan for the Programmer and QA Tester?';
+            text = 'I investigated "$topicTitle" across domain patterns and compiled the evidence. Would you like to explore specific areas in greater detail?';
           }
-          finalContent = text;
+
+          final isLeadOrPitch = cleanPrompt.toLowerCase().contains('pitch') ||
+              cleanPrompt.toLowerCase().contains('lead') ||
+              cleanPrompt.toLowerCase().contains('business') ||
+              cleanPrompt.toLowerCase().contains('complain');
+          final researchSummary = buildTaskExecutionSummary(
+            taskGoal: cleanPrompt,
+            workersEngaged: const [
+              'Manager (Executive Orchestrator)',
+              'Researcher (Specialist)',
+            ],
+            actionsCompleted: [
+              'Inspected workspace context',
+              'Manager formulated research roadmap for "$topicTitle"',
+              'Researcher conducted deep research and compiled evidence dossier',
+              'Manager synthesized actionable recommendations directly for user',
+            ],
+            deliverables: const [
+              'Evidence dossier saved in `.autonomos/research/evidence/`',
+              'Executive research findings delivered in conversation',
+            ],
+            nextRecommendedStep: isLeadOrPitch
+                ? 'Review the identified pain points & lead profiles to decide if you would like to draft tailored outreach pitch templates or explore an automation prototype.'
+                : 'Would you like to explore deeper on any specific finding or formulate next steps?',
+          );
+
+          finalContent = '$text$researchSummary';
           _persistResearchArtifacts(
             activePath: activePath,
             projectName: projectName,
@@ -1550,8 +1822,8 @@ class ChatController extends ChangeNotifier {
             if (_currentActivity != null && _currentActivity!.filesRead.isNotEmpty)
               '✓ Read ${_currentActivity!.filesRead.length} project files',
             '✓ Manager formulated execution plan and delegated task to Researcher',
-            '✓ Researcher completed deep analysis of project architecture & UX patterns',
-            '✓ Manager synthesized findings and prepared implementation roadmap',
+            '✓ Researcher completed deep investigation for $topicTitle',
+            '✓ Manager synthesized findings and delivered executive recommendations',
           ];
 
           finalWorkers = const [
@@ -1560,7 +1832,7 @@ class ChatController extends ChangeNotifier {
               name: 'Manager',
               role: 'Executive Orchestrator',
               status: 'COMPLETED',
-              currentAction: 'Synthesized findings & formulated implementation plan',
+              currentAction: 'Synthesized findings & delivered executive recommendations',
             ),
             WorkerActivityItem(
               workerId: 'worker.researcher',
@@ -1867,11 +2139,28 @@ class ChatController extends ChangeNotifier {
     required List<String> writtenFiles,
     required String activeWorkingPath,
     String? researcherDossier,
+    String? topicTitle,
   }) {
+    final is3d = userPrompt.toLowerCase().contains('3d') || userPrompt.toLowerCase().contains('portfolio');
+    final title = topicTitle ?? extractTopicTitle(userPrompt);
     final buffer = StringBuffer();
-    buffer.writeln('### 🚀 Interactive 3D Portfolio Complete\n');
-    buffer.writeln('The workforce has engineered and deployed your interactive 3D website using Three.js WebGL, real-time particle animation, and responsive glassmorphic cards.\n');
-    buffer.writeln('Open **`index.html`** in your browser to explore the live 3D portfolio.');
+    if (is3d) {
+      buffer.writeln('### 🚀 Interactive 3D Portfolio Complete\n');
+      buffer.writeln('The workforce has engineered and deployed your interactive 3D website using Three.js WebGL, real-time particle animation, and responsive glassmorphic cards.\n');
+      buffer.writeln('Open **`index.html`** in your browser to explore the live 3D portfolio.');
+    } else {
+      buffer.writeln('### 🚀 $title: Implementation Complete\n');
+      buffer.writeln('The engineering workforce has orchestrated, researched, and deployed your requested solution to the workspace.\n');
+      if (writtenFiles.isNotEmpty) {
+        buffer.writeln('Deployed **${writtenFiles.length}** files to `$activeWorkingPath`:\n');
+        for (final f in writtenFiles.take(5)) {
+          buffer.writeln('- `$f`');
+        }
+        if (writtenFiles.length > 5) {
+          buffer.writeln('- … and ${writtenFiles.length - 5} more files');
+        }
+      }
+    }
     return buffer.toString();
   }
 
@@ -1879,10 +2168,18 @@ class ChatController extends ChangeNotifier {
     required String userPrompt,
     required List<String> writtenFiles,
     required String activeWorkingPath,
+    String? topicTitle,
   }) {
+    final title = topicTitle ?? extractTopicTitle(userPrompt);
     final buffer = StringBuffer();
-    buffer.writeln('### 🛠️ Code Implementation Complete\n');
+    buffer.writeln('### 🛠️ $title: Code Implementation Complete\n');
     buffer.writeln('Senior Programmer has completed and deployed your requested code changes to your workspace.');
+    if (writtenFiles.isNotEmpty) {
+      buffer.writeln('\n**Modified Files:**');
+      for (final f in writtenFiles) {
+        buffer.writeln('- `$f`');
+      }
+    }
     return buffer.toString();
   }
 

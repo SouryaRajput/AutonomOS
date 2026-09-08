@@ -429,7 +429,7 @@ class InferenceService {
 
     final buffer = StringBuffer();
     buffer.writeln('You are the AutonomOS Workforce Engineering Manager (Executive Orchestrator).');
-    buffer.writeln('You have received an engineering goal from the user: "$userPrompt"');
+    buffer.writeln('You have received a goal/request from the user: "$userPrompt"');
     buffer.writeln('Target Project: `$pName` located at `${activeWorkingPath ?? "."}`');
     if (scannedFiles != null && scannedFiles.isNotEmpty) {
       buffer.writeln('Workspace Files:');
@@ -445,9 +445,10 @@ class InferenceService {
       });
     }
     buffer.writeln('\nYOUR TASK AS MANAGER IN PHASE 1:');
-    buffer.writeln('1. Formulate a crisp, multi-phase execution plan for this goal.');
+    buffer.writeln('1. Formulate a crisp, structured execution roadmap for this goal.');
     buffer.writeln('2. Formulate a specific, structured Task Delegation Brief for your Specialist Researcher worker.');
-    buffer.writeln('3. Specify exactly which 3-5 technical questions and codebase areas the Researcher must investigate.');
+    buffer.writeln('3. Specify the exact core questions, problem areas, market domains, or architectural components the Researcher must investigate.');
+    buffer.writeln('4. If the user\'s goal is market research, business pain points, lead generation, or competitor analysis, direct the Researcher to gather factual, non-hallucinated evidence, candidate profiles/subreddits/communities, and targeting rationale.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
     buffer.writeln('- STRICT ROLE INTEGRITY: You are the Manager. You coordinate the workforce; you do NOT write code or execute pseudo tools.');
     buffer.writeln('- NEVER output XML tool tags, <function=...>, <parameter=...>, or <tool_call>.');
@@ -492,10 +493,11 @@ class InferenceService {
       });
     }
     buffer.writeln('\nYOUR TASK AS SPECIALIST RESEARCHER:');
-    buffer.writeln('1. Perform a deep, thorough technical analysis tailored specifically to this codebase and stack.');
-    buffer.writeln('2. Address every question raised by the Manager.');
-    buffer.writeln('3. Provide concrete code patterns, library suggestions, UX/UI improvements, performance optimizations, and exact implementation recommendations.');
-    buffer.writeln('4. Return a comprehensive Research Findings Dossier in pure Markdown.');
+    buffer.writeln('1. Perform a deep, thorough investigation tailored specifically to the Manager\'s brief.');
+    buffer.writeln('2. Address every question and objective raised by the Manager.');
+    buffer.writeln('3. If the brief involves market research, business automation pain points, or prospective leads, provide concrete, realistic business problems, candidate profiles/channels (e.g. subreddits, communities, target niches), pricing rationales, and explain why each target fits the criteria. DO NOT hallucinate fake people, fake names, or bogus contact details.');
+    buffer.writeln('4. If the brief involves code or architecture, provide concrete code patterns, library suggestions, UX/UI improvements, and performance optimizations.');
+    buffer.writeln('5. Return a comprehensive Research Findings Dossier in pure Markdown.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS:');
     buffer.writeln('- STRICT ROLE INTEGRITY: You are the Specialist Researcher. You provide technical research dossiers, architectural blueprints, and library recommendations.');
     buffer.writeln('- NEVER output XML tool tags, <function=...>, <parameter=...>, or <tool_call>.');
@@ -535,19 +537,18 @@ class InferenceService {
     buffer.writeln('Specialist Researcher Findings Dossier (Technical Data):\n$researcherFindings\n');
     buffer.writeln('\nROLE & AUDIENCE:');
     buffer.writeln('You are presenting an executive synthesis directly to the human user / project owner.');
-    buffer.writeln('The giant technical data, schemas, and evidence packages have ALREADY been saved for the Programmer and QA Tester in `.autonomos/research/evidence/`.');
-    buffer.writeln('The user wants a clean, minimal, high-signal summary. Do NOT dump giant walls of text, code, or ASCII diagrams onto the user.');
+    buffer.writeln('The giant technical data, schemas, and evidence packages have ALREADY been saved in `.autonomos/research/evidence/`.');
+    buffer.writeln('The user wants a clean, structured, high-signal summary directly answering their prompt.');
     buffer.writeln('\nCRITICAL OUTPUT CONSTRAINTS FOR USER-FACING SYNTHESIS:');
-    buffer.writeln('1. NO CODE DUMPS: Do NOT output code snippets, class schemas (@dataclass), function definitions, or SQL in this response. The Senior Programmer handles code execution in the workspace.');
+    buffer.writeln('1. NO CODE DUMPS: Do NOT output code snippets, class schemas (@dataclass), function definitions, or SQL unless explicitly asked by the user.');
     buffer.writeln('2. NO ASCII ART OR BOX DIAGRAMS: Do NOT output giant text-box flowcharts (| IDEA | -> | BUILD |) or ASCII directory trees (|-- decisions/). Use concise bullet points or small tables instead.');
-    buffer.writeln('3. KEEP IT MINIMAL & HIGH-SIGNAL: Keep the response under 300 words total. Focus strictly on key architectural decisions, identified opportunities, and product impact.');
+    buffer.writeln('3. KEEP IT MINIMAL & HIGH-SIGNAL: Keep the response structured, readable, and under 400 words. Directly provide the requested answers, ideas, and rationale.');
     buffer.writeln('4. NO ROBOTIC SYSTEM ARTIFACTS: Do NOT output any XML tags, tool calls, or pseudo function blocks: <function=...>, <parameter=...>, <tool_call>.');
     buffer.writeln('\nDELIVER A MINIMAL EXECUTIVE RESPONSE IN CLEAN MARKDOWN:');
-    buffer.writeln('1. **Executive Overview**: 2-3 concise sentences summarizing what was investigated and key takeaways.');
-    buffer.writeln('2. **Key Findings**: 3-5 high-signal bullet points or a compact table summarizing architectural strengths and UX opportunities.');
-    buffer.writeln('3. **Recommended Next Steps**: 2-3 high-level phases described in 1 sentence each.');
-    buffer.writeln('4. **Call to Action**: Conclude by asking:');
-    buffer.writeln('   "Would you like me to proceed with creating the implementation plan for the Programmer and QA Tester to begin executing Phase A?"');
+    buffer.writeln('1. **Executive Overview**: 2-3 concise sentences summarizing what was investigated and key takeaways addressing the user\'s specific request.');
+    buffer.writeln('2. **Key Findings / Discoveries**: 3-5 high-signal bullet points or a compact table presenting the core findings (e.g. top business automation pain points, lead criteria and rationale, or technical discoveries).');
+    buffer.writeln('3. **Recommended Next Steps**: 2-3 actionable, high-level next steps tailored to this inquiry.');
+    buffer.writeln('4. **Call to Action**: Conclude with an appropriate question tailored to the topic (e.g. for software projects: "Would you like me to proceed with creating an implementation plan?"; for business/lead research: "Would you like me to draft tailored outreach pitch templates, evaluate automation tools, or narrow down on a specific niche?").');
 
     return await _sendWithHistory(
       uri: uri,

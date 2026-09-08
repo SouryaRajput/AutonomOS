@@ -742,6 +742,389 @@ class ExecutionSupervisionStatus(str, Enum):
         return cls.SUPERVISING
 
 
+class EngineeringHandoffType(str, Enum):
+    """Authoritative taxonomy of structured cross-worker handoffs involving Programmer."""
+    RESEARCH_TO_PROGRAMMER = "RESEARCH_TO_PROGRAMMER"
+    PROGRAMMER_TO_DESIGNER = "PROGRAMMER_TO_DESIGNER"
+    PROGRAMMER_TO_TESTER = "PROGRAMMER_TO_TESTER"
+    TESTER_TO_PROGRAMMER = "TESTER_TO_PROGRAMMER"
+    DESIGNER_TO_PROGRAMMER = "DESIGNER_TO_PROGRAMMER"
+    PROGRAMMER_TO_DEPLOYMENT = "PROGRAMMER_TO_DEPLOYMENT"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return None
+
+
+class HandoffPriority(str, Enum):
+    """Priority level assigned to an engineering handoff."""
+    LOW = "LOW"
+    NORMAL = "NORMAL"
+    HIGH = "HIGH"
+    URGENT = "URGENT"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.NORMAL
+
+
+class EpistemicContextType(str, Enum):
+    """Authoritative epistemic taxonomy for context elements attached to engineering contracts."""
+    OBSERVED_RESEARCH_EVIDENCE = "OBSERVED_RESEARCH_EVIDENCE"
+    INFERRED_REQUIREMENTS = "INFERRED_REQUIREMENTS"
+    MANAGER_DEFINED_REQUIREMENTS = "MANAGER_DEFINED_REQUIREMENTS"
+    PROGRAMMER_ENGINEERING_ASSUMPTIONS = "PROGRAMMER_ENGINEERING_ASSUMPTIONS"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.OBSERVED_RESEARCH_EVIDENCE
+
+
+class DesignerContextClassification(str, Enum):
+    """Classification distinguishing binding technical requirements from non-binding design advice."""
+    TECHNICAL_REQUIREMENT = "TECHNICAL_REQUIREMENT"
+    DESIGN_RECOMMENDATION = "DESIGN_RECOMMENDATION"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.TECHNICAL_REQUIREMENT
+
+
+class VerificationDomain(str, Enum):
+    """Explicit distinction between internal developer verification and independent QA verification."""
+    PROGRAMMER_VERIFICATION = "PROGRAMMER_VERIFICATION"
+    TESTER_VERIFICATION = "TESTER_VERIFICATION"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.PROGRAMMER_VERIFICATION
+
+
+class ApiChangeType(str, Enum):
+    """Categorization of an API change communicated in an engineering handoff."""
+    ADDED = "ADDED"
+    MODIFIED = "MODIFIED"
+    DEPRECATED = "DEPRECATED"
+    REMOVED = "REMOVED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.MODIFIED
+
+
+class FeedbackIssueType(str, Enum):
+    """Taxonomy of issue categories reported in cross-worker feedback."""
+    BUG = "BUG"
+    REGRESSION = "REGRESSION"
+    UX_INTEGRATION = "UX_INTEGRATION"
+    API_CONTRACT = "API_CONTRACT"
+    PERFORMANCE = "PERFORMANCE"
+    SECURITY = "SECURITY"
+    REQUIREMENT_MISMATCH = "REQUIREMENT_MISMATCH"
+    OTHER = "OTHER"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.OTHER
+
+
+class FeedbackSeverity(str, Enum):
+    """Severity classification of cross-worker feedback issues."""
+    LOW = "LOW"
+    MEDIUM = "MEDIUM"
+    HIGH = "HIGH"
+    CRITICAL = "CRITICAL"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.MEDIUM
+
+
+class FeedbackConfidence(str, Enum):
+    """Degree of epistemic reproducibility and confidence in the feedback."""
+    PROBABLE = "PROBABLE"
+    CONFIRMED = "CONFIRMED"
+    REPRODUCED = "REPRODUCED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.REPRODUCED
+
+
+class ManagerIterationDecision(str, Enum):
+    """
+    Authoritative decision vocabulary available to Manager when evaluating
+    engineering outcomes and peer worker feedback during iteration.
+    """
+    REQUEST_FIX = "REQUEST_FIX"
+    REQUEST_DESIGN_CHANGE = "REQUEST_DESIGN_CHANGE"
+    REQUEST_RESEARCH = "REQUEST_RESEARCH"
+    ACCEPT = "ACCEPT"
+    REJECT = "REJECT"
+    CANCEL = "CANCEL"
+    ESCALATE = "ESCALATE"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.ESCALATE
+
+
+class ProductArtifactType(str, Enum):
+    """
+    Taxonomy of software product artifacts produced by a Programmer execution.
+    Clearly distinguishes source code, build output, deployable package,
+    configuration, and documentation.
+    """
+    SOURCE = "SOURCE"
+    BUILD = "BUILD"
+    PACKAGE = "PACKAGE"
+    CONTAINER = "CONTAINER"
+    DOCUMENTATION = "DOCUMENTATION"
+    CONFIGURATION = "CONFIGURATION"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.SOURCE
+
+
+class DeployabilityStatus(str, Enum):
+    """
+    Assessment status of an artifact's deployability.
+    Do not imply that an artifact is deployable merely because it exists.
+    """
+    NOT_DEPLOYABLE = "NOT_DEPLOYABLE"
+    UNDEFINED = "UNDEFINED"
+    INELIGIBLE = "INELIGIBLE"
+    QUALIFIED = "QUALIFIED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNDEFINED
+
+
+class BuildPackagingStatus(str, Enum):
+    """
+    Execution and verification status of a build and packaging operation.
+    """
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    UNAUTHORIZED = "UNAUTHORIZED"
+    ESCALATED = "ESCALATED"
+    MISMATCH = "MISMATCH"
+    MISSING_ARTIFACT = "MISSING_ARTIFACT"
+    MISSING_COMMAND = "MISSING_COMMAND"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.FAILED
+
+
+class ConfigurationFieldType(str, Enum):
+    """
+    Data types supported for software runtime configuration fields.
+    Configuration is data, not executable code.
+    """
+    STRING = "STRING"
+    INTEGER = "INTEGER"
+    FLOAT = "FLOAT"
+    BOOLEAN = "BOOLEAN"
+    LIST = "LIST"
+    DICT = "DICT"
+    ENUM = "ENUM"
+    SECRET_REF = "SECRET_REF"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.STRING
+
+
+class ConfigurationValidationStatus(str, Enum):
+    """
+    Status of runtime configuration validation against its schema.
+    """
+    VALID = "VALID"
+    INVALID = "INVALID"
+    PENDING = "PENDING"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+class DeploymentReadinessStatus(str, Enum):
+    """
+    Authoritative readiness status of a ProductArtifact evaluated for deployment.
+    """
+    READY = "READY"
+    READY_WITH_WARNINGS = "READY_WITH_WARNINGS"
+    NOT_READY = "NOT_READY"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.UNKNOWN
+
+
+class EnvironmentRequirementType(str, Enum):
+    """Data type of an environment requirement or variable."""
+    STRING = "STRING"
+    INTEGER = "INTEGER"
+    BOOLEAN = "BOOLEAN"
+    URL = "URL"
+    SECRET_REF = "SECRET_REF"
+    PATH = "PATH"
+    JSON = "JSON"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.STRING
+
+
+class EnvironmentRequirementSource(str, Enum):
+    """Source provenance of an identified environment requirement."""
+    INFERRED = "INFERRED"
+    MANIFEST = "MANIFEST"
+    DECLARED = "DECLARED"
+    MANAGER = "MANAGER"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.DECLARED
+
+
+class DeploymentHandoffStatus(str, Enum):
+    """
+    Status of a structured product deployment handoff.
+    """
+    READY = "READY"
+    READY_WITH_WARNINGS = "READY_WITH_WARNINGS"
+    NOT_READY = "NOT_READY"
+    BLOCKED = "BLOCKED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.NOT_READY
+
+
+class ProductLifecycleState(str, Enum):
+    """
+    Deterministic lifecycle state of a software product artifact.
+    Explicitly distinguishes build completion, verification, deployment readiness,
+    and actual deployment. Programmer may reach DEPLOYMENT_READY, but cannot autonomously
+    declare DEPLOYED.
+    """
+    BUILD_COMPLETE = "BUILD_COMPLETE"
+    VERIFIED = "VERIFIED"
+    DEPLOYMENT_READY = "DEPLOYMENT_READY"
+    DEPLOYED = "DEPLOYED"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.BUILD_COMPLETE
+
+
+class DeploymentRecommendation(str, Enum):
+    """
+    Programmer's advisory recommendation for Manager regarding deployment action.
+    Programmer recommends, but Manager remains the authoritative orchestrator.
+    """
+    DEPLOY = "DEPLOY"
+    FIX = "FIX"
+    INVESTIGATE = "INVESTIGATE"
+    CONFIGURE = "CONFIGURE"
+
+    @classmethod
+    def _missing_(cls, value: object):
+        val_str = str(value).upper()
+        for member in cls:
+            if member.value == val_str:
+                return member
+        return cls.INVESTIGATE
+
+
+
+
+
+
+
+
 
 
 

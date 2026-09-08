@@ -152,6 +152,88 @@ void main() {
       expect(intent, UserIntent.complexCreation);
     });
 
+    test('Classifies the user business automation & lead research prompt to complexResearch (NEVER complexCreation)', () {
+      final prompt = 'can you research about what many people complaning about in their businesses which I can automate using softwares and charge them \$500-1000? Can you also find emails/contact details like instagram or reddit profiles of users whom I can pitch to sell because they have a specific issue? also, tell me why you chose those people to pitch. Do not hallucinate';
+      final intent = classifyUserIntent(
+        prompt: prompt,
+        lastAssistantMessage: null,
+        conversationMessages: [],
+      );
+      expect(intent, UserIntent.complexResearch);
+      expect(intent, isNot(UserIntent.complexCreation));
+      expect(intent, isNot(UserIntent.codeImplementation));
+    });
+
+    test('Classifies conversational market and business discovery prompts to complexResearch', () {
+      final researchPrompts = [
+        'could you find out what competitors in this space are doing?',
+        'please research the market for automated invoicing tools',
+        'investigate what problems freelance videographers face',
+        'can you look into popular SaaS pain points on reddit',
+        'find businesses complaining about booking software',
+        'what are small business owners complaining about on reddit?',
+        'research pain points in clinic appointment management',
+      ];
+
+      for (final prompt in researchPrompts) {
+        final intent = classifyUserIntent(
+          prompt: prompt,
+          lastAssistantMessage: null,
+          conversationMessages: [],
+        );
+        expect(intent, UserIntent.complexResearch, reason: 'Failed for prompt: "$prompt"');
+      }
+    });
+
+    test('Substantial prompts without coding verbs safely fallback to complexResearch, NEVER complexCreation', () {
+      final prompt = 'I want to explore the commercial dynamics of autonomous AI agents operating in enterprise procurement environments without writing any code right now';
+      final intent = classifyUserIntent(
+        prompt: prompt,
+        lastAssistantMessage: null,
+        conversationMessages: [],
+      );
+      expect(intent, UserIntent.complexResearch);
+      expect(intent, isNot(UserIntent.complexCreation));
+    });
+
+    test('extractTopicTitle derives clean, readable topic names', () {
+      expect(
+        extractTopicTitle('can you research about what many people complaning about in their businesses which I can automate using softwares'),
+        equals('what many people complaning about in their businesses'),
+      );
+      expect(
+        extractTopicTitle('Can you create an interactive 3D website in the best and latest technologies for UI/UX'),
+        equals('interactive 3D website in the best and latest…'),
+      );
+      expect(
+        extractTopicTitle('write code to add user authentication'),
+        equals('write code to add user authentication'),
+      );
+    });
+
+    test('buildTaskExecutionSummary produces structured GitHub markdown', () {
+      final summary = buildTaskExecutionSummary(
+        taskGoal: 'Research business automation opportunities',
+        workersEngaged: ['Manager (Executive Orchestrator)', 'Researcher (Specialist)'],
+        actionsCompleted: [
+          '✓ Inspected workspace context',
+          '✓ Manager formulated research brief',
+          '✓ Researcher compiled evidence dossier',
+        ],
+        deliverables: [
+          'Evidence dossier saved in `.autonomos/research/evidence/`',
+        ],
+        nextRecommendedStep: 'Review the identified pain points.',
+      );
+
+      expect(summary.contains('### 📋 Task Execution Summary'), isTrue);
+      expect(summary.contains('- **Goal**: Research business automation opportunities'), isTrue);
+      expect(summary.contains('Manager (Executive Orchestrator), Researcher (Specialist)'), isTrue);
+      expect(summary.contains('Inspected workspace context'), isTrue);
+      expect(summary.contains('Evidence dossier saved in `.autonomos/research/evidence/`'), isTrue);
+      expect(summary.contains('Review the identified pain points.'), isTrue);
+    });
+
     test('MessageSanitizer thoroughly strips <function=read_file> and <parameter=path> tags', () {
       const rawWithHallucinatedTools = '''
 I'll analyze your current project first, then build a cutting-edge 3D portfolio. Let me examine the existing structure.

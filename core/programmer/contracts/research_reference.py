@@ -53,6 +53,23 @@ class ResearchEvidenceReference:
         Construct a reference from a runtime Evidence, EvidenceItem, or ResearchFinding.
         Preserves provenance details.
         """
+        if isinstance(evidence, dict):
+            evidence_id = evidence.get("id") or evidence.get("evidence_id") or evidence.get("finding_id", f"ev-{uuid.uuid4().hex[:6]}")
+            claim = evidence.get("claim") or evidence.get("extracted_fact") or evidence.get("description") or evidence.get("data", "")
+            source_ref = evidence.get("source_ref", "")
+            prov = evidence.get("provenance", {})
+            prov_dict = dict(prov) if isinstance(prov, dict) else {}
+            conf = evidence.get("confidence", "SUPPORTED")
+            conf_str = conf.value if hasattr(conf, "value") else str(conf)
+            return cls(
+                evidence_id=str(evidence_id),
+                claim_or_fact=str(claim),
+                source_ref=str(source_ref),
+                confidence=conf_str,
+                provenance=prov_dict,
+                relevance_notes=relevance_notes,
+            )
+
         evidence_id = getattr(evidence, "id", None) or getattr(evidence, "evidence_id", None) or getattr(evidence, "finding_id", f"ev-{uuid.uuid4().hex[:6]}")
         claim = getattr(evidence, "claim", None) or getattr(evidence, "extracted_fact", None) or getattr(evidence, "data", "")
 

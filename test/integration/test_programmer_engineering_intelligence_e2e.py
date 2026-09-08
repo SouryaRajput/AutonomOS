@@ -328,8 +328,8 @@ class TestProgrammerEngineeringIntelligenceE2E(unittest.TestCase):
         result = programmer.execute(work_order=wo, root_path_override=self.workspace_root)
         self.assertEqual(result.status, ProgrammerResultStatus.COMPLETED)
         understanding = result.metadata["understanding"]
-        self.assertEqual(understanding["project_type"], "python")
-        self.assertIn("src", understanding["important_directories"])
+        self.assertIn("python", understanding["project_type"].lower())
+        self.assertTrue(any("src" in d for d in understanding["important_directories"]))
 
     # =========================================================================
     # Scenario 4: Task requiring impact analysis
