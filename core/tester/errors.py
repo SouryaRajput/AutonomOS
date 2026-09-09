@@ -135,3 +135,106 @@ class TesterBlockerError(TesterError):
         )
         self.work_order_id = work_order_id
         self.blocker = blocker
+
+
+# ---------------------------------------------------------------------------
+# Phase 2.2 Browser & Session Runtime Errors
+# ---------------------------------------------------------------------------
+
+class BrowserStartupError(TesterError):
+    """Raised when browser or session fails to launch or initialize."""
+    __test__ = False
+
+    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+        super().__init__(message=message, code="BROWSER_STARTUP_ERROR", details=details)
+
+
+class BrowserUnavailableError(TesterError):
+    """Raised when the browser binary, driver, or remote connection is unavailable."""
+    __test__ = False
+
+    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+        super().__init__(message=message, code="BROWSER_UNAVAILABLE_ERROR", details=details)
+
+
+class NavigationDeniedError(TesterError):
+    """Raised when navigation to a target is denied by authorization or boundary policy."""
+    __test__ = False
+
+    def __init__(self, message: str, target_url: str = "", reason: str = "", details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if target_url:
+            d["target_url"] = target_url
+        if reason:
+            d["reason"] = reason
+        super().__init__(message=message, code="NAVIGATION_DENIED", details=d)
+        self.target_url = target_url
+        self.reason = reason
+
+
+class InvalidUrlError(TesterError):
+    """Raised when a target URL is malformed, uses an unsupported scheme, or violates safety rules."""
+    __test__ = False
+
+    def __init__(self, message: str, url: str = "", details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if url:
+            d["url"] = url
+        super().__init__(message=message, code="INVALID_URL", details=d)
+        self.url = url
+
+
+class NavigationTimeoutError(TesterError):
+    """Raised when navigation does not complete within the allotted timeout."""
+    __test__ = False
+
+    def __init__(self, message: str, url: str = "", timeout_seconds: float = 0.0, details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if url:
+            d["url"] = url
+        if timeout_seconds:
+            d["timeout_seconds"] = timeout_seconds
+        super().__init__(message=message, code="NAVIGATION_TIMEOUT", details=d)
+        self.url = url
+        self.timeout_seconds = timeout_seconds
+
+
+class EnvironmentMismatchError(TesterError):
+    """Raised when session environment or lineage does not match the configured execution."""
+    __test__ = False
+
+    def __init__(self, message: str, details: Optional[dict[str, Any]] = None):
+        super().__init__(message=message, code="ENVIRONMENT_MISMATCH", details=details)
+
+
+class SessionUnavailableError(TesterError):
+    """Raised when an action is requested but the browser session is not in a ready or usable state."""
+    __test__ = False
+
+    def __init__(self, message: str, current_status: str = "", details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if current_status:
+            d["current_status"] = current_status
+        super().__init__(message=message, code="SESSION_UNAVAILABLE", details=d)
+        self.current_status = current_status
+
+
+class SessionStoppedError(TesterError):
+    """Raised when an interaction is attempted on a session that has already been stopped or terminated."""
+    __test__ = False
+
+    def __init__(self, message: str = "Cannot perform action on stopped session", details: Optional[dict[str, Any]] = None):
+        super().__init__(message=message, code="SESSION_STOPPED", details=details)
+
+
+class UnsupportedEnvironmentError(TesterError):
+    """Raised when an environment type (e.g. LOCAL_APP in V1) is not supported by the runtime."""
+    __test__ = False
+
+    def __init__(self, message: str, environment_type: str = "", details: Optional[dict[str, Any]] = None):
+        d = dict(details or {})
+        if environment_type:
+            d["environment_type"] = environment_type
+        super().__init__(message=message, code="UNSUPPORTED_ENVIRONMENT", details=d)
+        self.environment_type = environment_type
+

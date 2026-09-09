@@ -170,6 +170,16 @@ class TesterActionType(str, Enum):
     REPORT_FINDING = "REPORT_FINDING"
     REPORT_RECOMMENDATION = "REPORT_RECOMMENDATION"
     REPORT_UNCERTAINTY = "REPORT_UNCERTAINTY"
+    NAVIGATE = "NAVIGATE"
+    CLICK = "CLICK"
+    DOUBLE_CLICK = "DOUBLE_CLICK"
+    TYPE = "TYPE"
+    PRESS_KEY = "PRESS_KEY"
+    SCROLL = "SCROLL"
+    HOVER = "HOVER"
+    DRAG = "DRAG"
+    MOVE_CURSOR = "MOVE_CURSOR"
+    WAIT = "WAIT"
 
 
 class TestingCapability(str, Enum):
@@ -193,6 +203,8 @@ class TestingCapability(str, Enum):
     HOVER = "HOVER"
     DRAG = "DRAG"
     KEYBOARD_INPUT = "KEYBOARD_INPUT"
+    MOVE_CURSOR = "MOVE_CURSOR"
+    WAIT = "WAIT"
     SCREENSHOT = "SCREENSHOT"
     SCREEN_RECORDING = "SCREEN_RECORDING"
     OCR = "OCR"
@@ -253,3 +265,45 @@ class TesterBlockerSeverity(str, Enum):
     MEDIUM = "MEDIUM"
     HIGH = "HIGH"
     CRITICAL = "CRITICAL"
+
+
+class EnvironmentType(str, Enum):
+    """Supported product execution environment types for testing."""
+    __test__ = False
+    BROWSER = "BROWSER"
+    LOCAL_APP = "LOCAL_APP"
+    OTHER = "OTHER"
+
+
+class TestRuntimeStatus(str, Enum):
+    """Operational lifecycle status of an active test execution runtime."""
+    __test__ = False
+    CREATED = "CREATED"
+    STARTING = "STARTING"
+    READY = "READY"
+    RUNNING = "RUNNING"
+    STOPPING = "STOPPING"
+    STOPPED = "STOPPED"
+    FAILED = "FAILED"
+
+
+class TestActionStatus(str, Enum):
+    """Execution status of an individual testing interaction action."""
+    __test__ = False
+    PENDING = "PENDING"
+    RUNNING = "RUNNING"
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    DENIED = "DENIED"
+    TIMED_OUT = "TIMED_OUT"
+
+
+class InteractionStatus(str, Enum):
+    """Result status of a physical product interaction action."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    DENIED = "DENIED"
+    TIMEOUT = "TIMEOUT"
+    NOT_SUPPORTED = "NOT_SUPPORTED"
+

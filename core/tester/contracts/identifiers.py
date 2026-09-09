@@ -17,6 +17,10 @@ EVIDENCE_ID_PREFIX = "tevid-"
 BLOCKER_ID_PREFIX = "tblk-"
 TEST_CASE_ID_PREFIX = "ttest-"
 RECOMMENDATION_ID_PREFIX = "trec-"
+ENVIRONMENT_ID_PREFIX = "tenv-"
+RUNTIME_ID_PREFIX = "trun-"
+ACTION_ID_PREFIX = "tact-"
+SESSION_ID_PREFIX = "tsess-"
 
 ALL_TESTER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -29,6 +33,10 @@ ALL_TESTER_PREFIXES = (
     BLOCKER_ID_PREFIX,
     TEST_CASE_ID_PREFIX,
     RECOMMENDATION_ID_PREFIX,
+    ENVIRONMENT_ID_PREFIX,
+    RUNTIME_ID_PREFIX,
+    ACTION_ID_PREFIX,
+    SESSION_ID_PREFIX,
 )
 
 # Regex pattern: non-empty alphanumeric / hyphen / underscore string
@@ -83,6 +91,27 @@ def new_test_case_id() -> str:
 def new_recommendation_id() -> str:
     """Generate unique identifier for a TesterRecommendation."""
     return f"{RECOMMENDATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_environment_id() -> str:
+    """Generate unique identifier for a TestEnvironment."""
+    return f"{ENVIRONMENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_runtime_id() -> str:
+    """Generate unique identifier for a TestRuntime."""
+    return f"{RUNTIME_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_action_id() -> str:
+    """Generate unique identifier for a TestActionRecord."""
+    return f"{ACTION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_session_id() -> str:
+    """Generate unique identifier for a BrowserSession."""
+    return f"{SESSION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
 
 
 def is_tester_id(identifier: Optional[str]) -> bool:
@@ -164,3 +193,24 @@ def validate_test_case_id(test_id: str) -> None:
 def validate_recommendation_id(recommendation_id: str) -> None:
     """Validate that recommendation_id starts with 'trec-' and conforms to identifier constraints."""
     _validate_id(recommendation_id, RECOMMENDATION_ID_PREFIX, "recommendation_id")
+
+
+def validate_environment_id(environment_id: str) -> None:
+    """Validate that environment_id starts with 'tenv-' and conforms to identifier constraints."""
+    _validate_id(environment_id, ENVIRONMENT_ID_PREFIX, "environment_id")
+
+
+def validate_runtime_id(runtime_id: str) -> None:
+    """Validate that runtime_id starts with 'trun-' and conforms to identifier constraints."""
+    _validate_id(runtime_id, RUNTIME_ID_PREFIX, "runtime_id")
+
+
+def validate_action_id(action_id: str) -> None:
+    """Validate that action_id starts with 'tact-' and conforms to identifier constraints."""
+    _validate_id(action_id, ACTION_ID_PREFIX, "action_id")
+
+
+def validate_session_id(session_id: str) -> None:
+    """Validate that session_id starts with 'tsess-' and conforms to identifier constraints."""
+    _validate_id(session_id, SESSION_ID_PREFIX, "session_id")
+
