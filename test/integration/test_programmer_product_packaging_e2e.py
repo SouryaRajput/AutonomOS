@@ -50,12 +50,14 @@ from core.programmer.contracts.git_model import (
 from core.programmer.contracts.identifiers import (
     new_deployment_handoff_id,
     new_deployment_readiness_id,
+    new_engineering_risk_id,
     new_environment_requirement_id,
     new_execution_id,
     new_git_repository_id,
     new_git_revision_id,
     new_product_artifact_id,
     new_schema_id,
+    new_verification_check_id,
     new_verification_evidence_id,
     new_work_order_id,
 )
@@ -101,10 +103,10 @@ from core.programmer.types import (
     DeploymentRecommendation,
     EnvironmentRequirementSource,
     EnvironmentRequirementType,
+    EngineeringRiskCategory,
     ProductArtifactType,
     ProductLifecycleState,
-    RiskCategory,
-    RiskSeverity,
+    VerificationCheckType,
     VerificationEvidenceSourceType,
     VerificationStatus,
     VerificationSummaryStatus,
@@ -155,12 +157,10 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
         self.base_rev = GitRevision(
             revision_id=new_git_revision_id(),
             commit_hash=self.base_commit_hash,
-            message="Initial base commit",
         )
         self.verified_rev = GitRevision(
             revision_id=new_git_revision_id(),
             commit_hash=self.verified_commit_hash,
-            message="Verified implementation commit",
         )
 
         self.git_context = GitExecutionContext(
@@ -197,6 +197,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             work_order_id=self.work_order_id,
             project_id=self.project_id,
             task_id="task-rate-limiter-service",
+            correlation_id="corr-phase9-001",
             objective=objective,
             allowed_paths=["src/", "tests/", "dist/"],
             writable_paths=["src/service.py", "tests/test_service.py", "dist/"],
@@ -218,13 +219,13 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
         overall_status: VerificationSummaryStatus = VerificationSummaryStatus.VERIFIED,
     ) -> VerificationSummary:
         chk = VerificationCheck(
-            check_id="chk-unit-tests",
+            check_id=new_verification_check_id(),
             execution_id=self.execution_id,
             work_order_id=self.work_order_id,
-            name="Unit Tests",
+            check_type=VerificationCheckType.TEST,
             command="pytest tests/",
-            status=VerificationStatus.PASSED if overall_status == VerificationSummaryStatus.VERIFIED else VerificationStatus.FAILED,
-            description="Run unit test suite",
+            status=VerificationStatus.PASS if overall_status == VerificationSummaryStatus.VERIFIED else VerificationStatus.FAIL,
+            exit_code=0 if overall_status == VerificationSummaryStatus.VERIFIED else 1,
         )
         return VerificationSummary(
             overall_status=overall_status,
@@ -238,14 +239,14 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             name="PORT",
             field_type=ConfigurationFieldType.INTEGER,
             required=True,
-            default_value=8080,
+            default=8080,
             description="HTTP service listen port",
         )
         f_env = ConfigurationField(
             name="ENVIRONMENT",
             field_type=ConfigurationFieldType.STRING,
             required=True,
-            default_value="production",
+            default="production",
             description="Deployment environment name",
         )
         f_token = ConfigurationField(
@@ -253,7 +254,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             field_type=ConfigurationFieldType.STRING,
             required=True,
             sensitive=True,
-            default_value="secret_ref:API_SECRET_TOKEN",
+            default="secret_ref:API_SECRET_TOKEN",
             description="Reference to API secret token",
         )
         return RuntimeConfigurationSchema(
@@ -263,6 +264,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             fields=[f_port, f_env, f_token],
             required_fields=["PORT", "ENVIRONMENT", "API_SECRET_TOKEN"],
             sensitive_fields=["API_SECRET_TOKEN"],
+            defaults={"PORT": 8080, "ENVIRONMENT": "production", "API_SECRET_TOKEN": "secret_ref:API_SECRET_TOKEN"},
         )
 
     # =========================================================================
@@ -306,7 +308,6 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
         foreign_rev = GitRevision(
             revision_id=new_git_revision_id(),
             commit_hash="0000000000000000000000000000000000000000",
-            message="Unrelated foreign commit",
         )
 
         req = ProductPipelineRequest(
@@ -442,7 +443,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
 
         # Prohibit executable configuration
         with self.assertRaises(ExecutableConfigurationError):
-            assert_safe_configuration_value("__import__('os').system('ls')")
+            assert_safe_configuration_value("CMD_FIELD", "; rm -rf /")
 
     # =========================================================================
     # Test 7: Sensitive configuration is not exposed.
@@ -472,7 +473,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
         leaked_key = "-----BEGIN RSA PRIVATE KEY-----\nMIIEowIBAAKCAQEA0...\n-----END RSA PRIVATE KEY-----"
         findings = SecretExposureDetector.scan_text(leaked_key)
         self.assertTrue(len(findings) > 0)
-        self.assertEqual(findings[0].secret_type, "RSA Private Key")
+        self.assertEqual(findings[0].secret_type, "PRIVATE_KEY")
 
     # =========================================================================
     # Test 8: Environment requirements are identified.
@@ -486,7 +487,7 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             requirement_id=new_environment_requirement_id(),
             product_id=self.project_id,
             name="DATABASE_URL",
-            type=EnvironmentRequirementType.DATABASE_URL,
+            type=EnvironmentRequirementType.URL,
             required=True,
             sensitive=True,
             description="PostgreSQL connection string",
@@ -495,9 +496,8 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
             requirement_id=new_environment_requirement_id(),
             product_id=self.project_id,
             name="PORT",
-            type=EnvironmentRequirementType.PORT,
+            type=EnvironmentRequirementType.INTEGER,
             required=True,
-            default_value="8080",
             description="Listen port",
         )
 
@@ -636,9 +636,9 @@ class TestProgrammerProductPackagingE2E(unittest.TestCase):
         lifecycle state is DEPLOYMENT_READY.
         """
         mitigated_risk = EngineeringRisk(
-            risk_id="risk-memory-spike",
-            category=RiskCategory.PERFORMANCE,
-            severity=RiskSeverity.MEDIUM,
+            risk_id=new_engineering_risk_id(),
+            category=EngineeringRiskCategory.LARGE_SCOPE,
+            severity=RiskLevel.MEDIUM,
             description="Occasional memory spike during large batch exports",
             affected_area="core.exporter",
             mitigation="Bounded chunk size buffering applied",
