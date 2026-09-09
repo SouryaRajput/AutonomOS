@@ -529,30 +529,39 @@ class TestBrowserSessionRuntime(unittest.TestCase):
     def test_no_false_capabilities_exposed(self) -> None:
         """
         CRITICAL: The runtime MUST NOT report a capability as available unless
-        it is genuinely implemented. Only NAVIGATE is supported in Phase 2.2.
+        it is genuinely implemented. Implemented capabilities in Phase 2.3:
+        NAVIGATE and session-supported interaction capabilities.
+        Unimplemented capabilities (SCREENSHOT, OCR, etc.) must NEVER be claimed.
         """
         runtime, _ = self._create_runtime()
         supported = runtime.supported_capabilities()
 
-        # ONLY NAVIGATE is supported
-        self.assertEqual(supported, {TestingCapability.NAVIGATE})
+        # NAVIGATE, SCREENSHOT, and SCREEN_RECORDING are supported
+        self.assertIn(TestingCapability.NAVIGATE, supported)
+        self.assertIn(TestingCapability.SCREENSHOT, supported)
+        self.assertIn(TestingCapability.SCREEN_RECORDING, supported)
 
-        # MUST NOT claim interaction or visual analysis capabilities
+        # MUST NOT claim unimplemented visual analysis or automation capabilities
         forbidden_claims = [
-            TestingCapability.CLICK,
-            TestingCapability.TYPE,
-            TestingCapability.SCROLL,
-            TestingCapability.HOVER,
-            TestingCapability.DRAG,
-            TestingCapability.KEYBOARD_INPUT,
-            TestingCapability.SCREENSHOT,
-            TestingCapability.SCREEN_RECORDING,
             TestingCapability.OCR,
             TestingCapability.PERFORMANCE_MEASUREMENT,
         ]
         for cap in forbidden_claims:
             self.assertNotIn(cap, supported)
             self.assertFalse(runtime.is_capability_available(cap))
+
+        # When session explicitly lacks capabilities, runtime never claims them
+        lacking_session = MockBrowserSession(
+            project_id=self.project_id,
+            work_order_id=self.work_order_id,
+            execution_id=self.execution_id,
+            runtime_id=new_runtime_id(),
+            unsupported_capabilities=MockBrowserSession.ALL_INTERACTION_CAPABILITIES | {TestingCapability.SCREENSHOT, TestingCapability.SCREEN_RECORDING},
+        )
+        self.assertEqual(lacking_session.supported_screenshot_capabilities(), set())
+        self.assertEqual(lacking_session.supported_recording_capabilities(), set())
+        lacking_runtime, _ = self._create_runtime(session=lacking_session)
+        self.assertEqual(lacking_runtime.supported_capabilities(), {TestingCapability.NAVIGATE})
 
 
 if __name__ == "__main__":

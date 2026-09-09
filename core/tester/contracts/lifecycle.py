@@ -20,7 +20,30 @@ class TesterLifecycle:
             TesterExecutionStatus.CANCELLED,
         },
         TesterExecutionStatus.STARTING: {
+            TesterExecutionStatus.PLANNING,
             TesterExecutionStatus.RUNNING,
+            TesterExecutionStatus.BLOCKED,
+            TesterExecutionStatus.FAILED,
+            TesterExecutionStatus.CANCELLED,
+        },
+        TesterExecutionStatus.PLANNING: {
+            TesterExecutionStatus.PLAN_VALIDATION,
+            TesterExecutionStatus.REPORTING,
+            TesterExecutionStatus.COMPLETED,
+            TesterExecutionStatus.BLOCKED,
+            TesterExecutionStatus.FAILED,
+            TesterExecutionStatus.CANCELLED,
+        },
+        TesterExecutionStatus.PLAN_VALIDATION: {
+            TesterExecutionStatus.PLAN_FROZEN,
+            TesterExecutionStatus.BLOCKED,
+            TesterExecutionStatus.FAILED,
+            TesterExecutionStatus.CANCELLED,
+        },
+        TesterExecutionStatus.PLAN_FROZEN: {
+            TesterExecutionStatus.RUNNING,
+            TesterExecutionStatus.REPORTING,
+            TesterExecutionStatus.COMPLETED,
             TesterExecutionStatus.BLOCKED,
             TesterExecutionStatus.FAILED,
             TesterExecutionStatus.CANCELLED,
@@ -46,6 +69,7 @@ class TesterLifecycle:
         },
         TesterExecutionStatus.BLOCKED: {
             TesterExecutionStatus.STARTING,       # Re-initializing upon environment fix
+            TesterExecutionStatus.PLANNING,       # Resumed planning upon decision/context
             TesterExecutionStatus.RUNNING,        # Resumed upon Manager decision or context provision
             TesterExecutionStatus.CANCELLED,      # Cancelled while blocked
             TesterExecutionStatus.FAILED,         # Unresolvable blocker deemed fatal
@@ -63,6 +87,9 @@ class TesterLifecycle:
 
     ACTIVE_STATUSES: set[TesterExecutionStatus] = {
         TesterExecutionStatus.STARTING,
+        TesterExecutionStatus.PLANNING,
+        TesterExecutionStatus.PLAN_VALIDATION,
+        TesterExecutionStatus.PLAN_FROZEN,
         TesterExecutionStatus.RUNNING,
         TesterExecutionStatus.EVALUATING,
         TesterExecutionStatus.REPORTING,

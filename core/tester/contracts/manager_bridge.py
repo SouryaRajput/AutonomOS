@@ -683,6 +683,9 @@ class FakeTesterWorker(Worker):
         simulate_test_failures: bool = False,
         test_cases: Optional[list[TestCaseResult]] = None,
         ship_recommendation: Optional[ShipRecommendation] = None,
+        use_planning: bool = False,
+        files_manifest: Optional[list[str]] = None,
+        target_environment: Optional[TestEnvironment] = None,
     ) -> None:
         self.bridge = bridge
         self.worker_id = worker_id
@@ -692,6 +695,9 @@ class FakeTesterWorker(Worker):
         self.simulate_test_failures = simulate_test_failures
         self.test_cases = test_cases
         self.ship_recommendation = ship_recommendation
+        self.use_planning = use_planning
+        self.files_manifest = files_manifest
+        self.target_environment = target_environment
 
     def get_manifest(self) -> WorkerManifest:
         """Return static manifest representing Tester V1 capability boundary."""
@@ -745,11 +751,26 @@ class FakeTesterWorker(Worker):
             worker_output = self.bridge.receive_result(result, execution, work_order)
             return execution, result, worker_output
 
-        # 3. Progress to RUNNING
-        execution.transition_to(
-            TesterExecutionStatus.RUNNING,
-            reason="Executing authorized tests within scope",
-        )
+        # Optional Phase 3 planning pipeline integration
+        if self.use_planning:
+            from core.tester.contracts.planning_pipeline import TestPlanningPipeline
+            pipeline = TestPlanningPipeline(bridge=self.bridge)
+            execution, terminal_result, plan = pipeline.execute_planning_pipeline(
+                execution=execution,
+                work_order=work_order,
+                environment=self.target_environment or getattr(work_order, "test_environment", None),
+                runtime_capabilities=work_order.authorized_capabilities,
+                files_manifest=self.files_manifest,
+            )
+            if terminal_result is not None:
+                worker_output = self.bridge.receive_result(terminal_result, execution, work_order)
+                return execution, terminal_result, worker_output
+        else:
+            # 3. Progress directly to RUNNING
+            execution.transition_to(
+                TesterExecutionStatus.RUNNING,
+                reason="Executing authorized tests within scope",
+            )
 
         # 4. Record test cases
         if self.test_cases:

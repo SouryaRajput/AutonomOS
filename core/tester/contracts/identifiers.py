@@ -21,6 +21,11 @@ ENVIRONMENT_ID_PREFIX = "tenv-"
 RUNTIME_ID_PREFIX = "trun-"
 ACTION_ID_PREFIX = "tact-"
 SESSION_ID_PREFIX = "tsess-"
+PLAN_ID_PREFIX = "tplan-"
+STEP_ID_PREFIX = "tstep-"
+GAP_ID_PREFIX = "tgap-"
+COVERAGE_REPORT_ID_PREFIX = "tcov-"
+VALIDATION_REPORT_ID_PREFIX = "tval-"
 
 ALL_TESTER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -37,6 +42,11 @@ ALL_TESTER_PREFIXES = (
     RUNTIME_ID_PREFIX,
     ACTION_ID_PREFIX,
     SESSION_ID_PREFIX,
+    PLAN_ID_PREFIX,
+    STEP_ID_PREFIX,
+    GAP_ID_PREFIX,
+    COVERAGE_REPORT_ID_PREFIX,
+    VALIDATION_REPORT_ID_PREFIX,
 )
 
 # Regex pattern: non-empty alphanumeric / hyphen / underscore string
@@ -112,6 +122,30 @@ def new_session_id() -> str:
     """Generate unique identifier for a BrowserSession."""
     return f"{SESSION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
 
+
+def new_plan_id() -> str:
+    """Generate unique identifier for a TestPlan."""
+    return f"{PLAN_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_step_id() -> str:
+    """Generate unique identifier for a TestStep."""
+    return f"{STEP_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_gap_id() -> str:
+    """Generate unique identifier for a CoverageGap."""
+    return f"{GAP_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_coverage_report_id() -> str:
+    """Generate unique identifier for a TestCoverageReport."""
+    return f"{COVERAGE_REPORT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_validation_report_id() -> str:
+    """Generate unique identifier for a TestPlanValidationResult."""
+    return f"{VALIDATION_REPORT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
 
 
 def is_tester_id(identifier: Optional[str]) -> bool:
@@ -213,4 +247,30 @@ def validate_action_id(action_id: str) -> None:
 def validate_session_id(session_id: str) -> None:
     """Validate that session_id starts with 'tsess-' and conforms to identifier constraints."""
     _validate_id(session_id, SESSION_ID_PREFIX, "session_id")
+
+
+def validate_plan_id(plan_id: str) -> None:
+    """Validate that plan_id starts with 'tplan-' and conforms to identifier constraints."""
+    _validate_id(plan_id, PLAN_ID_PREFIX, "plan_id")
+
+
+def validate_step_id(step_id: str) -> None:
+    """Validate that step_id starts with 'tstep-' and conforms to identifier constraints."""
+    _validate_id(step_id, STEP_ID_PREFIX, "step_id")
+
+
+def validate_gap_id(gap_id: str) -> None:
+    """Validate that gap_id starts with 'tgap-' and conforms to identifier constraints."""
+    _validate_id(gap_id, GAP_ID_PREFIX, "gap_id")
+
+
+def validate_coverage_report_id(report_id: str) -> None:
+    """Validate that report_id starts with 'tcov-' and conforms to identifier constraints."""
+    _validate_id(report_id, COVERAGE_REPORT_ID_PREFIX, "report_id")
+
+
+def validate_validation_report_id(report_id: str) -> None:
+    """Validate that report_id starts with 'tval-' and conforms to identifier constraints."""
+    _validate_id(report_id, VALIDATION_REPORT_ID_PREFIX, "report_id")
+
 

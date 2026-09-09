@@ -4,8 +4,13 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Optional, Sequence
 
+from core.tester.contracts.applicability import TestApplicabilityReport
 from core.tester.contracts.blocker import TesterBlocker
 from core.tester.contracts.boundary import TesterBoundaryGuard
+from core.tester.contracts.context import TestContext
+from core.tester.contracts.coverage import CoverageGap, TestCoverageReport
+from core.tester.contracts.criteria import AcceptanceCriterion
+from core.tester.contracts.plan import TestPlan
 from core.tester.contracts.finding import (
     AcceptanceCriterionResult,
     TesterDefect,
@@ -27,6 +32,7 @@ from core.tester.contracts.test_case import TestCaseResult
 from core.tester.contracts.trace import TesterTrace
 from core.tester.errors import (
     InvalidTesterTransitionError,
+    TesterBoundaryViolationError,
     TesterLineageError,
     TesterValidationError,
 )
@@ -42,6 +48,7 @@ from core.tester.types import (
     TesterExecutionPhase,
     TesterExecutionStatus,
     TesterResultStatus,
+    TestPlanStatus,
 )
 
 
@@ -78,6 +85,10 @@ class TesterExecution:
     acceptance_results: list[AcceptanceCriterionResult] = field(default_factory=list)
     blockers: list[TesterBlocker] = field(default_factory=list)
     metadata: dict[str, Any] = field(default_factory=dict)
+    test_context: Optional[TestContext] = None
+    test_applicability: Optional[TestApplicabilityReport] = None
+    test_plan: Optional[TestPlan] = None
+    require_frozen_plan: bool = False
     created_at: str = field(default_factory=utc_now)
 
     def __post_init__(self) -> None:
@@ -112,6 +123,20 @@ class TesterExecution:
         """Check whether execution is in an active non-terminal state."""
         return TesterLifecycle.is_active(self.status)
 
+    @property
+    def coverage_report(self) -> Optional[TestCoverageReport]:
+        """Return attached coverage report from test_plan if present."""
+        if self.test_plan is not None:
+            return self.test_plan.coverage_report
+        return None
+
+    @property
+    def coverage_gaps(self) -> list[CoverageGap]:
+        """Return list of coverage gaps from test_plan if present."""
+        if self.test_plan is not None:
+            return self.test_plan.coverage_gaps
+        return []
+
     def _validate_completion(self) -> None:
         """
         Validate preconditions before transitioning from REPORTING to COMPLETED.
@@ -144,6 +169,7 @@ class TesterExecution:
             or self.acceptance_results
             or self.test_cases
             or self.evidence
+            or self.test_plan is not None
         )
         if not has_activity:
             raise TesterValidationError(
@@ -179,6 +205,26 @@ class TesterExecution:
             if not reason and blocker is None:
                 raise TesterValidationError("Transition to BLOCKED requires a factual reason or blocker specification.")
 
+        # Pre-transition validation for RUNNING: Plan must be FROZEN and valid
+        if target == TesterExecutionStatus.RUNNING:
+            if self.test_plan is not None:
+                if not getattr(self.test_plan, "is_frozen", False):
+                    raise TesterValidationError(
+                        f"Cannot transition to RUNNING: TestPlan '{self.test_plan.plan_id}' is not FROZEN."
+                    )
+                if getattr(self.test_plan, "status", None) == TestPlanStatus.INVALID:
+                    raise TesterValidationError(
+                        f"Cannot transition to RUNNING: TestPlan '{self.test_plan.plan_id}' is INVALID."
+                    )
+                if len(self.test_plan.test_cases) == 0:
+                    raise TesterValidationError(
+                        "Cannot transition to RUNNING with zero test cases. Terminal outcome must be NO_APPLICABLE_TESTS."
+                    )
+            elif self.require_frozen_plan:
+                raise TesterValidationError(
+                    "Tester MUST NOT start test execution before a valid frozen TestPlan exists."
+                )
+
         # Pre-transition completion validation if target is COMPLETED
         if target == TesterExecutionStatus.COMPLETED:
             self._validate_completion()
@@ -195,6 +241,13 @@ class TesterExecution:
         # Update operational phase
         if target == TesterExecutionStatus.STARTING:
             self.current_phase = TesterExecutionPhase.PREPARING
+        elif target == TesterExecutionStatus.PLANNING:
+            self.current_phase = TesterExecutionPhase.PLANNING
+            self.require_frozen_plan = True
+        elif target == TesterExecutionStatus.PLAN_VALIDATION:
+            self.current_phase = TesterExecutionPhase.PLAN_VALIDATION
+        elif target == TesterExecutionStatus.PLAN_FROZEN:
+            self.current_phase = TesterExecutionPhase.PLAN_FROZEN
         elif target == TesterExecutionStatus.RUNNING:
             self.current_phase = TesterExecutionPhase.EXECUTING
         elif target == TesterExecutionStatus.EVALUATING:
@@ -454,6 +507,75 @@ class TesterExecution:
         self.acceptance_results.append(ac)
         return ac
 
+    def attach_test_context(self, test_context: TestContext) -> None:
+        """
+        Attach an authoritative TestContext to this execution.
+        Validates lineage alignment between execution and test context.
+        """
+        if test_context.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot attach TestContext: execution_id mismatch ('{test_context.execution_id}' != '{self.execution_id}')."
+            )
+        if test_context.work_order_id != self.work_order_id:
+            raise TesterLineageError(
+                f"Cannot attach TestContext: work_order_id mismatch ('{test_context.work_order_id}' != '{self.work_order_id}')."
+            )
+        if test_context.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Cannot attach TestContext: project_id mismatch ('{test_context.project_id}' != '{self.project_id}')."
+            )
+        self.test_context = test_context
+
+    def attach_test_applicability(self, test_applicability: TestApplicabilityReport) -> None:
+        """
+        Attach an authoritative TestApplicabilityReport to this execution.
+        Validates lineage alignment between execution and applicability report.
+        """
+        if test_applicability.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot attach TestApplicabilityReport: execution_id mismatch ('{test_applicability.execution_id}' != '{self.execution_id}')."
+            )
+        if test_applicability.work_order_id != self.work_order_id:
+            raise TesterLineageError(
+                f"Cannot attach TestApplicabilityReport: work_order_id mismatch ('{test_applicability.work_order_id}' != '{self.work_order_id}')."
+            )
+        if test_applicability.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Cannot attach TestApplicabilityReport: project_id mismatch ('{test_applicability.project_id}' != '{self.project_id}')."
+            )
+        self.test_applicability = test_applicability
+
+    def attach_test_plan(self, test_plan: TestPlan) -> None:
+        """
+        Attach an authoritative TestPlan to this execution.
+        Validates lineage alignment between execution and test plan.
+        """
+        if self.status in {
+            TesterExecutionStatus.RUNNING,
+            TesterExecutionStatus.EVALUATING,
+            TesterExecutionStatus.REPORTING,
+            TesterExecutionStatus.COMPLETED,
+        }:
+            raise TesterBoundaryViolationError(
+                f"Cannot attach or mutate TestPlan when execution is in {self.status.value} status. "
+                "Dynamic test plan mutation after execution starts is strictly prohibited."
+            )
+        if getattr(test_plan, "status", None) == TestPlanStatus.INVALID:
+            raise TesterValidationError("Cannot attach an INVALID TestPlan to execution.")
+        if test_plan.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot attach TestPlan: execution_id mismatch ('{test_plan.execution_id}' != '{self.execution_id}')."
+            )
+        if test_plan.work_order_id != self.work_order_id:
+            raise TesterLineageError(
+                f"Cannot attach TestPlan: work_order_id mismatch ('{test_plan.work_order_id}' != '{self.work_order_id}')."
+            )
+        if test_plan.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Cannot attach TestPlan: project_id mismatch ('{test_plan.project_id}' != '{self.project_id}')."
+            )
+        self.test_plan = test_plan
+
     def validate_lineage(
         self,
         work_order: Optional[Any] = None,
@@ -628,6 +750,9 @@ class TesterExecution:
             "acceptance_results": [a.to_dict() for a in self.acceptance_results],
             "blockers": [b.to_dict() for b in self.blockers],
             "metadata": dict(self.metadata),
+            "test_context": self.test_context.to_dict() if self.test_context else None,
+            "test_applicability": self.test_applicability.to_dict() if self.test_applicability else None,
+            "test_plan": self.test_plan.to_dict() if self.test_plan else None,
             "created_at": self.created_at,
         }
 
@@ -670,6 +795,14 @@ class TesterExecution:
             TesterBlocker.from_dict(b) if isinstance(b, dict) else b
             for b in data.get("blockers", [])
         ]
+        raw_ctx = data.get("test_context")
+        test_context = TestContext.from_dict(raw_ctx) if isinstance(raw_ctx, dict) else None
+
+        raw_app = data.get("test_applicability")
+        test_applicability = TestApplicabilityReport.from_dict(raw_app) if isinstance(raw_app, dict) else None
+
+        raw_plan = data.get("test_plan")
+        test_plan = TestPlan.from_dict(raw_plan) if isinstance(raw_plan, dict) else None
 
         return cls(
             execution_id=data.get("execution_id", new_execution_id()),
@@ -692,6 +825,9 @@ class TesterExecution:
             acceptance_results=acceptance_results,
             blockers=blockers,
             metadata=dict(data.get("metadata", {})),
+            test_context=test_context,
+            test_applicability=test_applicability,
+            test_plan=test_plan,
             created_at=data.get("created_at", utc_now()),
         )
 

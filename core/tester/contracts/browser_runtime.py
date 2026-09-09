@@ -7,10 +7,34 @@ from core.events.types import EventType
 from core.tester.contracts.action import TestActionRecord
 from core.tester.contracts.environment import TestEnvironment
 from core.tester.contracts.execution import TesterExecution
+from core.tester.contracts.finding import TesterEvidence
 from core.tester.contracts.identifiers import new_action_id
+from core.tester.contracts.interaction import (
+    InteractionEngine,
+    InteractionResult,
+    InteractionStatus,
+    InteractionTarget,
+    normalize_target,
+)
 from core.tester.contracts.navigation_policy import NavigationPolicy
 from core.tester.contracts.runtime import TestRuntime
 from core.tester.contracts.runtime_config import TestRuntimeConfig
+from core.tester.contracts.recording import (
+    RecordingCaptureReason,
+    ScreenRecordingOptions,
+    ScreenRecordingResult,
+    ScreenRecordingService,
+    VideoArtifactStorage,
+    VideoObservation,
+)
+from core.tester.contracts.screenshot import (
+    ScreenshotArtifactStorage,
+    ScreenshotCaptureOptions,
+    ScreenshotCaptureReason,
+    ScreenshotCaptureResult,
+    ScreenshotCaptureService,
+    VisualObservation,
+)
 from core.tester.contracts.session import BrowserSession, HttpBrowserSession
 from core.tester.contracts.work_order import TesterWorkOrder
 from core.tester.errors import (
@@ -77,6 +101,28 @@ class BrowserTestRuntime(TestRuntime):
             work_order=self.work_order,
         )
 
+        # Setup interaction engine subordinate to this runtime
+        self.interaction_engine = InteractionEngine(runtime=self, session=self.session)
+
+        # Setup evidence, screenshot, and video recording services
+        self.evidences: list[TesterEvidence] = []
+        base_art_dir = (
+            getattr(self.config, "artifacts_dir", None)
+            or (getattr(self.environment, "configuration", {}).get("artifacts_dir") if self.environment else None)
+        )
+        self.screenshot_storage = ScreenshotArtifactStorage(base_dir=base_art_dir)
+        self.screenshot_service = ScreenshotCaptureService(
+            runtime=self,
+            session=self.session,
+            storage=self.screenshot_storage,
+        )
+        self.video_storage = VideoArtifactStorage(base_dir=base_art_dir)
+        self.screen_recorder = ScreenRecordingService(
+            runtime=self,
+            session=self.session,
+            storage=self.video_storage,
+        )
+
         # Validate session ownership if pre-injected
         if self.session is not None:
             self.session.validate_ownership(
@@ -90,10 +136,18 @@ class BrowserTestRuntime(TestRuntime):
         """
         Return the raw set of capabilities supported by this runtime.
         
-        CRITICAL: In Phase 2.2, BrowserTestRuntime supports ONLY NAVIGATE.
-        Never advertises CLICK, TYPE, SCROLL, HOVER, DRAG, SCREENSHOT, etc.
+        Supports NAVIGATE, interaction capabilities, SCREENSHOT, and SCREEN_RECORDING
+        when provided by the underlying session backend.
+        Never advertises unimplemented capabilities (OCR, AI, etc.).
         """
-        return {TestingCapability.NAVIGATE}
+        caps = {TestingCapability.NAVIGATE}
+        if self.session is not None and hasattr(self.session, "supported_interaction_capabilities"):
+            caps |= set(self.session.supported_interaction_capabilities())
+        if self.session is not None and hasattr(self.session, "supported_screenshot_capabilities"):
+            caps |= set(self.session.supported_screenshot_capabilities())
+        if self.session is not None and hasattr(self.session, "supported_recording_capabilities"):
+            caps |= set(self.session.supported_recording_capabilities())
+        return caps
 
     @property
     def current_url(self) -> str:
@@ -126,6 +180,9 @@ class BrowserTestRuntime(TestRuntime):
                 runtime_id=self.runtime_id,
                 initial_url=initial_target,
             )
+            self.interaction_engine.session = self.session
+            self.screenshot_service.session = self.session
+            self.screen_recorder.session = self.session
 
         self.session.validate_ownership(
             project_id=self.project_id,
@@ -138,6 +195,13 @@ class BrowserTestRuntime(TestRuntime):
 
     def _do_stop(self) -> None:
         """Cleanly close the browser session and release all associated resources."""
+        # Stop and finalize any active screen recording before closing session
+        if hasattr(self, "screen_recorder") and self.screen_recorder and self.screen_recorder.is_recording:
+            try:
+                self.screen_recorder.stop_recording(reason=RecordingCaptureReason.CHECKPOINT)
+            except Exception as e:
+                logger.warning(f"Error while finalizing active screen recording during runtime shutdown: {e}")
+
         if self.session:
             try:
                 self.session.close()
@@ -171,7 +235,19 @@ class BrowserTestRuntime(TestRuntime):
             )
 
         # 2. Capability verification
-        self.assert_capability_available(TestingCapability.NAVIGATE)
+        try:
+            self.assert_capability_available(TestingCapability.NAVIGATE)
+        except TesterBoundaryViolationError as e:
+            self.emit_runtime_event(
+                EventType.TEST_ACTION_DENIED,
+                {
+                    "action_type": TesterActionType.NAVIGATE.value,
+                    "required_capability": TestingCapability.NAVIGATE.value,
+                    "target_url": url,
+                    "error": str(e),
+                },
+            )
+            raise
 
         # 3. URL and origin policy enforcement
         normalized_url = self.navigation_policy.assert_allowed(url)
@@ -282,6 +358,157 @@ class BrowserTestRuntime(TestRuntime):
         )
 
         return action
+
+    # ----------------------------------------------------------------------
+    # Controlled Interaction Engine Delegations
+    # ----------------------------------------------------------------------
+
+    @property
+    def interaction_history(self) -> list[InteractionResult]:
+        """Audit history of all interaction operations."""
+        return self.interaction_engine.history
+
+    def move_cursor(self, target: Any, timeout_seconds: float = 30.0) -> InteractionResult:
+        """Move cursor to target coordinates or element."""
+        return self.interaction_engine.move_cursor(target, timeout_seconds=timeout_seconds)
+
+    def click(self, target: Any, timeout_seconds: float = 30.0) -> InteractionResult:
+        """Perform a single click on target element or coordinates."""
+        return self.interaction_engine.click(target, timeout_seconds=timeout_seconds)
+
+    def double_click(self, target: Any, timeout_seconds: float = 30.0) -> InteractionResult:
+        """Perform a double click on target element or coordinates."""
+        return self.interaction_engine.double_click(target, timeout_seconds=timeout_seconds)
+
+    def type_text(
+        self,
+        target: Any,
+        text: str,
+        sensitive: bool = False,
+        timeout_seconds: float = 30.0,
+    ) -> InteractionResult:
+        """Type text into target input or element. Redacts value if sensitive."""
+        return self.interaction_engine.type_text(
+            target,
+            text,
+            sensitive=sensitive,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def press_key(
+        self,
+        key: str,
+        target: Optional[Any] = None,
+        timeout_seconds: float = 30.0,
+    ) -> InteractionResult:
+        """Press a keyboard key optionally focused on target."""
+        return self.interaction_engine.press_key(key, target=target, timeout_seconds=timeout_seconds)
+
+    def scroll(
+        self,
+        direction: str = "vertical",
+        amount: int = 100,
+        target: Optional[Any] = None,
+        timeout_seconds: float = 30.0,
+    ) -> InteractionResult:
+        """Scroll the active window or target container."""
+        return self.interaction_engine.scroll(
+            direction=direction,
+            amount=amount,
+            target=target,
+            timeout_seconds=timeout_seconds,
+        )
+
+    def hover(self, target: Any, timeout_seconds: float = 30.0) -> InteractionResult:
+        """Hover cursor over target element."""
+        return self.interaction_engine.hover(target, timeout_seconds=timeout_seconds)
+
+    def drag(self, source: Any, destination: Any, timeout_seconds: float = 30.0) -> InteractionResult:
+        """Drag from source and drop onto destination."""
+        return self.interaction_engine.drag(source, destination, timeout_seconds=timeout_seconds)
+
+    def wait(self, duration_seconds: float) -> InteractionResult:
+        """Deterministic bounded wait."""
+        return self.interaction_engine.wait(duration_seconds)
+
+    @property
+    def captured_screenshots(self) -> list[ScreenshotCaptureResult]:
+        """Return history of captured screenshots from this runtime session."""
+        return self.screenshot_service.history
+
+    def capture_screenshot(
+        self,
+        reason: ScreenshotCaptureReason = ScreenshotCaptureReason.MANUAL_REQUEST,
+        label: Optional[str] = None,
+        full_page: bool = False,
+        sensitive: bool = False,
+        timeout_seconds: float = 30.0,
+    ) -> ScreenshotCaptureResult:
+        """Capture screenshot with specified options."""
+        options = ScreenshotCaptureOptions(
+            reason=reason,
+            label=label,
+            full_page=full_page,
+            sensitive=sensitive,
+            timeout_seconds=timeout_seconds,
+        )
+        return self.screenshot_service.capture(options=options)
+
+    def capture_viewport(
+        self,
+        reason: ScreenshotCaptureReason = ScreenshotCaptureReason.MANUAL_REQUEST,
+        label: Optional[str] = None,
+        sensitive: bool = False,
+        timeout_seconds: float = 30.0,
+    ) -> ScreenshotCaptureResult:
+        """Capture standard viewport screenshot."""
+        return self.screenshot_service.capture_viewport(
+            reason=reason,
+            label=label,
+            sensitive=sensitive,
+            timeout_seconds=timeout_seconds,
+        )
+
+    @property
+    def is_recording(self) -> bool:
+        """Return whether a screen recording is currently active."""
+        return self.screen_recorder.is_recording
+
+    @property
+    def recording_history(self) -> list[ScreenRecordingResult]:
+        """Return history of screen recordings from this runtime session."""
+        return self.screen_recorder.history
+
+    def start_recording(
+        self,
+        reason: RecordingCaptureReason = RecordingCaptureReason.TEST_FLOW,
+        label: Optional[str] = None,
+        format: str = "webm",
+        fps: Optional[int] = 30,
+        sensitive: bool = False,
+        max_duration_seconds: float = 300.0,
+        timeout_seconds: float = 30.0,
+        options: Optional[ScreenRecordingOptions] = None,
+    ) -> ScreenRecordingResult:
+        """Start controlled screen recording."""
+        opts = options or ScreenRecordingOptions(
+            capture_reason=reason,
+            label=label,
+            format=format,
+            fps=fps,
+            sensitive=sensitive,
+            max_duration_seconds=max_duration_seconds,
+            timeout_seconds=timeout_seconds,
+        )
+        return self.screen_recorder.start_recording(options=opts)
+
+    def stop_recording(
+        self,
+        reason: Optional[RecordingCaptureReason] = None,
+        is_partial: bool = False,
+    ) -> ScreenRecordingResult:
+        """Stop active screen recording and finalize video artifact."""
+        return self.screen_recorder.stop_recording(reason=reason, is_partial=is_partial)
 
 
 class LocalAppTestRuntime(TestRuntime):

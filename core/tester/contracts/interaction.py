@@ -231,10 +231,20 @@ class InteractionEngine:
     """
     __test__ = False
 
-    def __init__(self, runtime: Any, session: Any) -> None:
+    def __init__(self, runtime: Any, session: Any = None) -> None:
         self.runtime = runtime
-        self.session = session
+        self._session = session
         self.history: list[InteractionResult] = []
+
+    @property
+    def session(self) -> Any:
+        if self._session is not None:
+            return self._session
+        return getattr(self.runtime, "session", None)
+
+    @session.setter
+    def session(self, value: Any) -> None:
+        self._session = value
 
     def _execute_interaction(
         self,
@@ -371,9 +381,28 @@ class InteractionEngine:
 
         # 3. Target validation
         target_obj: Optional[InteractionTarget] = None
-        if target_raw is not None:
+        target_dict: dict[str, Any] = {}
+        target_display: str = ""
+
+        if action_type == TesterActionType.DRAG:
+            target_dict = target_raw if isinstance(target_raw, dict) else {"target": target_raw}
+            src_str = target_dict.get("source", {}).get("selector") if isinstance(target_dict.get("source"), dict) else target_dict.get("source")
+            dst_str = target_dict.get("destination", {}).get("selector") if isinstance(target_dict.get("destination"), dict) else target_dict.get("destination")
+            target_display = f"Drag({src_str} -> {dst_str})"
+        elif action_type == TesterActionType.WAIT:
+            target_dict = target_raw if isinstance(target_raw, dict) else {"duration_seconds": target_raw}
+            target_display = f"Wait({target_dict.get('duration_seconds')}s)"
+        elif action_type == TesterActionType.SCROLL and isinstance(target_raw, dict) and "direction" in target_raw:
+            target_dict = target_raw
+            target_display = f"Scroll({target_dict.get('direction')}, {target_dict.get('amount')}px)"
+        elif action_type == TesterActionType.PRESS_KEY and isinstance(target_raw, dict) and "key" in target_raw:
+            target_dict = target_raw
+            target_display = f"Key({target_dict.get('key')})"
+        elif target_raw is not None:
             try:
                 target_obj = normalize_target(target_raw)
+                target_dict = target_obj.to_dict()
+                target_display = target_obj.format_repr()
             except TesterValidationError as e:
                 res = InteractionResult(
                     action_id=act_id,
@@ -390,9 +419,8 @@ class InteractionEngine:
                 self.history.append(res)
                 self._emit_event(EventType.TEST_ACTION_FAILED, act_id, action_type, str(target_raw), error=str(e))
                 return res
-
-        target_dict = target_obj.to_dict() if target_obj else {}
-        target_display = target_obj.format_repr() if target_obj else "None"
+        else:
+            target_display = "None"
 
         # 4. Emit TEST_ACTION_STARTED
         self._emit_event(EventType.TEST_ACTION_STARTED, act_id, action_type, target_display)
@@ -560,7 +588,7 @@ class InteractionEngine:
         logged_value = "[REDACTED]" if sensitive else text
 
         def _fn(tgt: InteractionTarget, timeout: float) -> tuple[bool, Optional[str]]:
-            return self.session.do_type_text(tgt, text, timeout_seconds=timeout)
+            return self.session.do_type_text(tgt, text, sensitive=sensitive, timeout_seconds=timeout)
 
         return self._execute_interaction(
             action_type=TesterActionType.TYPE,

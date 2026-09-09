@@ -140,6 +140,11 @@ class TestRuntime(ABC):
         effective = global_allowed.intersection(wo_authorized).intersection(runtime_supported)
         return effective
 
+    @property
+    def effective_capabilities(self) -> Set[TestingCapability]:
+        """Return the effective authorized testing capabilities (alias for capabilities())."""
+        return self.capabilities()
+
     def is_capability_available(self, capability: TestingCapability | str) -> bool:
         """Check whether a capability is effectively authorized and available."""
         cap_val = capability if isinstance(capability, TestingCapability) else TestingCapability(str(capability).upper())
