@@ -552,7 +552,7 @@ class TestPlanValidator:
                 if allowed_routes:
                     if cat_val == "NAVIGATION":
                         auth_ref = getattr(tc, "authorization_reference", "")
-                        if auth_ref and auth_ref not in allowed_routes:
+                        if auth_ref and auth_ref not in wo_criteria and not auth_ref.startswith("ac-") and auth_ref not in allowed_routes:
                             issues.append(TestPlanValidationIssue(
                                 code=PlanValidationCode.OUT_OF_SCOPE,
                                 message=f"TestCase '{tc_id}' targets route '{auth_ref}' outside authorized routes {sorted(allowed_routes)}.",
@@ -570,7 +570,7 @@ class TestPlanValidator:
 
                 # Component scope check
                 auth_ref = getattr(tc, "authorization_reference", "")
-                if allowed_components and auth_ref and not auth_ref.startswith("ac-") and cat_val in {"UI_INTERACTION", "VISUAL"}:
+                if allowed_components and auth_ref and not auth_ref.startswith("ac-") and auth_ref not in wo_criteria and cat_val in {"UI_INTERACTION", "VISUAL"}:
                     if auth_ref not in allowed_components and not any(c.lower() in auth_ref.lower() for c in allowed_components):
                         issues.append(TestPlanValidationIssue(
                             code=PlanValidationCode.OUT_OF_SCOPE,

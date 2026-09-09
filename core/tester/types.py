@@ -170,6 +170,7 @@ class TesterActionType(str, Enum):
     INITIALIZE = "INITIALIZE"
     EXECUTE_TEST = "EXECUTE_TEST"
     OBSERVE = "OBSERVE"
+    RECORD_OBSERVATION = "RECORD_OBSERVATION"
     CAPTURE_EVIDENCE = "CAPTURE_EVIDENCE"
     EVALUATE_CRITERIA = "EVALUATE_CRITERIA"
     IDENTIFY_DEFECT = "IDENTIFY_DEFECT"
@@ -562,6 +563,120 @@ class ValidationIssueSeverity(str, Enum):
     WARNING = "WARNING"
 
 
+# ---------------------------------------------------------------------------
+# Phase 4.1 Observation Model Enums
+# ---------------------------------------------------------------------------
+
+class ObservationType(str, Enum):
+    """
+    Categorization of structured observations recorded during test execution.
+    Purely descriptive; does NOT represent evaluation, defects, or pass/fail verdict.
+    """
+    __test__ = False
+    SCREEN = "SCREEN"
+    TEXT = "TEXT"
+    GEOMETRY = "GEOMETRY"
+    VIDEO_FRAME = "VIDEO_FRAME"
+    UI_STATE = "UI_STATE"
+    RUNTIME_STATE = "RUNTIME_STATE"
+    METRIC = "METRIC"
+    OTHER = "OTHER"
 
 
+class ObservationConfidence(str, Enum):
+    """
+    Confidence tier for an observation source.
+    Represents certainty/uncertainty explicitly without converting uncertain claims into facts.
+    """
+    __test__ = False
+    CERTAIN = "CERTAIN"
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    UNCERTAIN = "UNCERTAIN"
 
+
+# ---------------------------------------------------------------------------
+# Phase 4.2 OCR Engine Enums
+# ---------------------------------------------------------------------------
+
+class OCRStatus(str, Enum):
+    """
+    Execution status of an OCR text extraction operation.
+    Bounded and descriptive; does NOT represent test pass/fail verdict.
+    """
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    UNAVAILABLE = "UNAVAILABLE"
+    TIMEOUT = "TIMEOUT"
+    UNSUPPORTED = "UNSUPPORTED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.3 Visual Geometry & Layout Observation Enums
+# ---------------------------------------------------------------------------
+
+class CoordinateSystem(str, Enum):
+    """Reference coordinate frame for spatial and geometric measurements."""
+    __test__ = False
+    VIEWPORT = "VIEWPORT"
+    PAGE = "PAGE"
+    NORMALIZED = "NORMALIZED"
+    CONTAINER_RELATIVE = "CONTAINER_RELATIVE"
+
+
+class VisibilityState(str, Enum):
+    """Deterministically observable visual presence state of a geometric surface."""
+    __test__ = False
+    VISIBLE = "VISIBLE"
+    HIDDEN = "HIDDEN"
+    PARTIALLY_VISIBLE = "PARTIALLY_VISIBLE"
+    CLIPPED = "CLIPPED"
+    OFFSCREEN = "OFFSCREEN"
+    UNKNOWN = "UNKNOWN"
+
+
+class GeometryStatus(str, Enum):
+    """Availability status of spatial and geometric observation measurements."""
+    __test__ = False
+    AVAILABLE = "AVAILABLE"
+    UNAVAILABLE = "UNAVAILABLE"
+    UNKNOWN = "UNKNOWN"
+    INVALID = "INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.4 Video & Frame Observation Enums
+# ---------------------------------------------------------------------------
+
+class FrameExtractionStatus(str, Enum):
+    """Execution status of video frame observation and extraction."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    UNAVAILABLE = "UNAVAILABLE"
+    UNSUPPORTED = "UNSUPPORTED"
+    TIMEOUT = "TIMEOUT"
+
+
+class FrameSelectionStrategy(str, Enum):
+    """Bounded strategy for sampling or selecting frames from video evidence."""
+    __test__ = False
+    TIMESTAMP = "TIMESTAMP"
+    FRAME_INDEX = "FRAME_INDEX"
+    INTERVAL = "INTERVAL"
+    SAMPLE = "SAMPLE"
+
+
+# ---------------------------------------------------------------------------
+# Phase 4.5 Observation Aggregation Enums
+# ---------------------------------------------------------------------------
+
+class ObservationCompleteness(str, Enum):
+    """Completeness state of an aggregated observation set."""
+    __test__ = False
+    COMPLETE = "COMPLETE"
+    PARTIAL = "PARTIAL"
+    EMPTY = "EMPTY"
+    FAILED = "FAILED"

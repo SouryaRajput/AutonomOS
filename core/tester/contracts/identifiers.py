@@ -26,6 +26,11 @@ STEP_ID_PREFIX = "tstep-"
 GAP_ID_PREFIX = "tgap-"
 COVERAGE_REPORT_ID_PREFIX = "tcov-"
 VALIDATION_REPORT_ID_PREFIX = "tval-"
+OBSERVATION_ID_PREFIX = "tobs-"
+OCR_ID_PREFIX = "tocr-"
+GEOMETRY_ID_PREFIX = "tgeom-"
+FRAME_OBSERVATION_ID_PREFIX = "tframe-"
+OBSERVATION_SET_ID_PREFIX = "tobset-"
 
 ALL_TESTER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -47,6 +52,11 @@ ALL_TESTER_PREFIXES = (
     GAP_ID_PREFIX,
     COVERAGE_REPORT_ID_PREFIX,
     VALIDATION_REPORT_ID_PREFIX,
+    OBSERVATION_ID_PREFIX,
+    OCR_ID_PREFIX,
+    GEOMETRY_ID_PREFIX,
+    FRAME_OBSERVATION_ID_PREFIX,
+    OBSERVATION_SET_ID_PREFIX,
 )
 
 # Regex pattern: non-empty alphanumeric / hyphen / underscore string
@@ -146,6 +156,31 @@ def new_coverage_report_id() -> str:
 def new_validation_report_id() -> str:
     """Generate unique identifier for a TestPlanValidationResult."""
     return f"{VALIDATION_REPORT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_observation_id() -> str:
+    """Generate unique identifier for a TesterObservation."""
+    return f"{OBSERVATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_ocr_id() -> str:
+    """Generate unique identifier for an OCRResult."""
+    return f"{OCR_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_geometry_id() -> str:
+    """Generate unique identifier for a GeometryObservation."""
+    return f"{GEOMETRY_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_frame_observation_id() -> str:
+    """Generate unique identifier for a VideoFrameObservation."""
+    return f"{FRAME_OBSERVATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_observation_set_id() -> str:
+    """Generate unique identifier for an ObservationSet."""
+    return f"{OBSERVATION_SET_ID_PREFIX}{uuid.uuid4().hex[:8]}"
 
 
 def is_tester_id(identifier: Optional[str]) -> bool:
@@ -274,3 +309,26 @@ def validate_validation_report_id(report_id: str) -> None:
     _validate_id(report_id, VALIDATION_REPORT_ID_PREFIX, "report_id")
 
 
+def validate_observation_id(observation_id: str) -> None:
+    """Validate that observation_id starts with 'tobs-' and conforms to identifier constraints."""
+    _validate_id(observation_id, OBSERVATION_ID_PREFIX, "observation_id")
+
+
+def validate_ocr_id(ocr_id: str) -> None:
+    """Validate that ocr_id starts with 'tocr-' and conforms to identifier constraints."""
+    _validate_id(ocr_id, OCR_ID_PREFIX, "ocr_id")
+
+
+def validate_geometry_id(geometry_id: str) -> None:
+    """Validate that geometry_id starts with 'tgeom-' and conforms to identifier constraints."""
+    _validate_id(geometry_id, GEOMETRY_ID_PREFIX, "geometry_id")
+
+
+def validate_frame_observation_id(frame_observation_id: str) -> None:
+    """Validate that frame_observation_id starts with 'tframe-' and conforms to identifier constraints."""
+    _validate_id(frame_observation_id, FRAME_OBSERVATION_ID_PREFIX, "frame_observation_id")
+
+
+def validate_observation_set_id(observation_set_id: str) -> None:
+    """Validate that observation_set_id starts with 'tobset-' and conforms to identifier constraints."""
+    _validate_id(observation_set_id, OBSERVATION_SET_ID_PREFIX, "observation_set_id")

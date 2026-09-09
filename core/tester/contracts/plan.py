@@ -52,11 +52,13 @@ class TestStep:
     Defines a discrete operational action, target, and expected observation.
     """
     __test__ = False
-    step_number: int
-    description: str
+    step_number: int = 1
+    description: str = ""
     action: Optional[str] = None
     target: Optional[str] = None
     expected: Optional[str] = None
+    step_id: Optional[str] = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if self.step_number < 1:
@@ -65,13 +67,18 @@ class TestStep:
             raise TesterValidationError("TestStep must have a non-empty description.", field_name="description")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        res = {
             "step_number": self.step_number,
             "description": self.description,
             "action": self.action,
             "target": self.target,
             "expected": self.expected,
         }
+        if self.step_id is not None:
+            res["step_id"] = self.step_id
+        if self.metadata:
+            res["metadata"] = dict(self.metadata)
+        return res
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TestStep:
@@ -81,6 +88,8 @@ class TestStep:
             action=data.get("action"),
             target=data.get("target"),
             expected=data.get("expected"),
+            step_id=data.get("step_id"),
+            metadata=dict(data.get("metadata", {})),
         )
 
 
@@ -108,6 +117,11 @@ class TestCase:
     dependencies: list[str] = field(default_factory=list)
     priority_score: int = 0
     priority_rationale: str = ""
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def case_id(self) -> str:
+        return self.test_case_id
 
     def __post_init__(self) -> None:
         validate_test_case_id(self.test_case_id)
@@ -164,6 +178,9 @@ class TestCase:
             "priority_score": self.priority_score,
             "priority_rationale": self.priority_rationale,
         }
+        if self.metadata:
+            res["metadata"] = dict(self.metadata)
+        return res
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> TestCase:
@@ -217,6 +234,7 @@ class TestCase:
             dependencies=list(data.get("dependencies", [])),
             priority_score=int(data.get("priority_score", 0)),
             priority_rationale=str(data.get("priority_rationale", "")),
+            metadata=dict(data.get("metadata", {})),
         )
 
 
@@ -477,6 +495,7 @@ class TestPlanGenerator:
         test_context: Any,
         applicability_report: Optional[TestApplicabilityReport] = None,
         max_test_cases: Optional[int] = None,
+        auto_freeze: bool = True,
     ) -> TestPlan:
         """
         Generate a finite, deterministic TestPlan and immediately freeze it.
@@ -647,6 +666,8 @@ class TestPlanGenerator:
         # D. Frontend UI Interaction Tests (Priority: HIGH)
         if ApplicableTestCategory.UI_INTERACTION in req_cats:
             components = getattr(test_context, "changed_components", []) or []
+            if not components and hasattr(work_order, "test_scope") and getattr(work_order.test_scope, "components", None):
+                components = getattr(work_order.test_scope, "components", []) or []
             if not components:
                 components = ["UI_Interaction_Target"]
             for comp in sorted(components):
@@ -854,8 +875,9 @@ class TestPlanGenerator:
         plan.attach_coverage_report(cov_report)
 
         # 10. Validate, Freeze and Return Plan
-        plan.mark_validated()
-        plan.freeze()
+        if auto_freeze:
+            plan.mark_validated()
+            plan.freeze()
         return plan
 
     def _surfaces_for_category(self, cat: ApplicableTestCategory) -> list[TestSurface]:

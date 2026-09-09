@@ -21,6 +21,7 @@ import '../services/mock_api_client.dart';
 import '../services/provider_storage.dart';
 import '../services/workspace_storage.dart';
 import '../services/conversation_storage.dart';
+import '../services/conversation_title_service.dart';
 import '../services/token_storage.dart';
 import '../services/workspace_diff_service.dart';
 
@@ -543,6 +544,27 @@ class AppState extends ChangeNotifier {
     // 1. Immediately load local persisted conversations
     final localConvs = ConversationStorage.loadConversations(pid);
     if (localConvs.isNotEmpty) {
+      bool anyRenamed = false;
+      for (var i = 0; i < localConvs.length; i++) {
+        final c = localConvs[i];
+        final isGeneric = c.title.isEmpty ||
+            c.title == 'New Conversation' ||
+            c.title == 'Workforce Chat';
+        if (isGeneric && c.messages.isNotEmpty) {
+          final userMsg = c.messages.cast<ChatMessage?>().firstWhere(
+            (m) => m != null && (m.sender == 'user' || m.messageType == MessageType.userMessage),
+            orElse: () => null,
+          );
+          if (userMsg != null && userMsg.content.trim().isNotEmpty) {
+            final autoTitle = generateConversationTitle(userMsg.content);
+            localConvs[i] = c.copyWith(title: autoTitle);
+            anyRenamed = true;
+          }
+        }
+      }
+      if (anyRenamed) {
+        ConversationStorage.saveAllConversations(localConvs);
+      }
       _conversations = localConvs;
       if (_activeConversation == null || !_conversations.any((c) => c.id == _activeConversation?.id)) {
         _activeConversation = _conversations.first;
@@ -574,10 +596,14 @@ class AppState extends ChangeNotifier {
               mergedMap[rc.id] = rc;
             } else {
               final msgs = local.messages.length >= rc.messages.length ? local.messages : rc.messages;
+              final isLocalCustom = local.title.isNotEmpty &&
+                  local.title != 'New Conversation' &&
+                  local.title != 'Workforce Chat';
+              final resolvedTitle = isLocalCustom ? local.title : (rc.title.isNotEmpty ? rc.title : local.title);
               mergedMap[rc.id] = ChatConversation(
                 id: rc.id,
                 projectId: rc.projectId,
-                title: rc.title.isNotEmpty ? rc.title : local.title,
+                title: resolvedTitle,
                 messages: msgs,
                 createdAt: rc.createdAt.isNotEmpty ? rc.createdAt : local.createdAt,
                 updatedAt: rc.updatedAt.isNotEmpty ? rc.updatedAt : local.updatedAt,

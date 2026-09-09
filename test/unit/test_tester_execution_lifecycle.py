@@ -654,6 +654,7 @@ class TestTesterExecutionLifecycle(unittest.TestCase):
         self.assertEqual(
             TesterLifecycle.get_allowed_transitions(TesterExecutionStatus.STARTING),
             {
+                TesterExecutionStatus.PLANNING,
                 TesterExecutionStatus.RUNNING,
                 TesterExecutionStatus.BLOCKED,
                 TesterExecutionStatus.FAILED,
@@ -692,6 +693,7 @@ class TestTesterExecutionLifecycle(unittest.TestCase):
             TesterLifecycle.get_allowed_transitions(TesterExecutionStatus.BLOCKED),
             {
                 TesterExecutionStatus.STARTING,
+                TesterExecutionStatus.PLANNING,
                 TesterExecutionStatus.RUNNING,
                 TesterExecutionStatus.CANCELLED,
                 TesterExecutionStatus.FAILED,

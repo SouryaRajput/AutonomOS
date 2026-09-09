@@ -209,6 +209,10 @@ class DocumentStreamView extends StatelessWidget {
       icon = Icons.terminal_rounded;
       badgeColor = const Color(0xFF34D399); // Emerald green
       displayName = 'PROGRAMMER';
+    } else if (sLower.contains('tester') || sLower.contains('qa') || sLower.contains('verification')) {
+      icon = Icons.verified_outlined;
+      badgeColor = const Color(0xFFF59E0B); // Amber / Gold
+      displayName = 'TESTER';
     } else {
       icon = Icons.hub_rounded;
       badgeColor = AppTokens.brandPrimary; // Purple

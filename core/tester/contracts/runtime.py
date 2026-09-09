@@ -105,6 +105,11 @@ class TestRuntime(ABC):
         """Return the current operational status of the runtime."""
         return self._status
 
+    @property
+    def is_running(self) -> bool:
+        """Return True if the runtime is currently active or starting."""
+        return self._status in (TestRuntimeStatus.STARTING, TestRuntimeStatus.READY, TestRuntimeStatus.RUNNING)
+
     @abstractmethod
     def supported_capabilities(self) -> Set[TestingCapability]:
         """

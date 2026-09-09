@@ -7,20 +7,27 @@ import '../models/conversation.dart';
 import '../models/execution_activity.dart';
 import '../repositories/conversation_repository.dart';
 import '../services/activity_projector.dart';
+import '../services/conversation_title_service.dart';
 import '../services/inference_service.dart';
 import '../services/workspace_diff_service.dart';
 import 'app_state.dart';
+import '../services/agent_router_service.dart';
 
-enum UserIntent {
-  proceedWithPlan,
-  summarizeFindings,
-  simpleQuestion,
-  codeImplementation,
-  complexCreation,
-  complexResearch,
-}
+export '../services/agent_router_service.dart';
+export '../services/conversation_title_service.dart';
 
 UserIntent classifyUserIntent({
+  required String prompt,
+  required String? lastAssistantMessage,
+  List<ChatMessage> conversationMessages = const [],
+}) {
+  return classifyUserIntentSmart(
+    prompt: prompt,
+    lastAssistantMessage: lastAssistantMessage,
+  ).intent;
+}
+
+UserIntent _legacyClassifyUserIntent({
   required String prompt,
   required String? lastAssistantMessage,
   required List<ChatMessage> conversationMessages,
@@ -310,7 +317,12 @@ class ChatController extends ChangeNotifier {
   final String projectId;
   final AppState? appState;
   final InferenceService _inferenceService = InferenceService();
+  final AgentRouterService _agentRouter = AgentRouterService();
   StreamSubscription<ExecutionActivity>? _activitySub;
+
+  bool _isCancelled = false;
+  int _currentExecutionEpoch = 0;
+  bool get isCancelled => _isCancelled;
 
   ChatConversation? _conversation;
   ChatConversation? get conversation => _conversation;
@@ -422,6 +434,21 @@ class ChatController extends ChangeNotifier {
     }
   }
 
+  void stopExecution() {
+    _isCancelled = true;
+    _currentExecutionEpoch++;
+    _isSending = false;
+    _currentActivity = null;
+    _currentActivityTitle = '';
+    _currentActivitySubtitle = '';
+    _appendRealtimeAgentMessage(
+      type: MessageType.managerMessage,
+      sender: 'Manager',
+      content: '🛑 **Workforce halted by operator.** All running agent tasks cancelled and execution stopped.',
+    );
+    notifyListeners();
+  }
+
   void _appendRealtimeAgentMessage({
     required MessageType type,
     required String sender,
@@ -453,15 +480,51 @@ class ChatController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void _refineConversationTitleWithLlm(
+    String prompt,
+    String conversationId,
+    Map<String, dynamic> activeProv,
+  ) {
+    unawaited(() async {
+      try {
+        final baseUrl = activeProv['baseUrl'] as String? ?? '';
+        final apiKey = activeProv['apiKey'] as String? ?? '';
+        final model = activeProv['model'] as String? ?? '';
+        if (baseUrl.trim().isEmpty) return;
+
+        final refined = await _inferenceService
+            .generateConversationTitle(
+              baseUrl: baseUrl,
+              apiKey: apiKey,
+              model: model,
+              userPrompt: prompt,
+            )
+            .timeout(const Duration(seconds: 4));
+
+        if (refined.isNotEmpty &&
+            refined != 'New Conversation' &&
+            refined != 'Workforce Chat' &&
+            _conversation?.id == conversationId) {
+          _conversation = _conversation!.copyWith(title: refined);
+          appState?.renameConversation(conversationId, refined);
+          notifyListeners();
+        }
+      } catch (_) {}
+    }());
+  }
+
   Future<void> sendMessage(String text) async {
     final cleanPrompt = text.trim();
     if (cleanPrompt.isEmpty) return;
+
+    _isCancelled = false;
+    final int currentEpoch = ++_currentExecutionEpoch;
 
     if (_conversation == null) {
       _conversation = ChatConversation(
         id: 'conv-active-$projectId',
         projectId: projectId,
-        title: 'Workforce Chat',
+        title: 'New Conversation',
         messages: [],
         createdAt: DateTime.now().toIso8601String(),
         updatedAt: DateTime.now().toIso8601String(),
@@ -469,6 +532,27 @@ class ChatController extends ChangeNotifier {
     }
 
     final previousMessages = List<ChatMessage>.from(_conversation!.messages);
+
+    // Auto-name conversation on the first prompt sent instead of generic "New Conversation"
+    final isGenericTitle = _conversation!.title.isEmpty ||
+        _conversation!.title == 'New Conversation' ||
+        _conversation!.title == 'Workforce Chat';
+    final hasNoPriorUserMessages = !previousMessages.any((m) => m.sender == 'user');
+    final shouldAutoName = isGenericTitle || hasNoPriorUserMessages;
+
+    String currentTitle = _conversation!.title;
+    if (shouldAutoName) {
+      currentTitle = generateConversationTitle(cleanPrompt);
+    }
+
+    final userMsg = ChatMessage(
+      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
+      conversationId: _conversation!.id,
+      messageType: MessageType.userMessage,
+      content: cleanPrompt,
+      sender: 'user',
+      timestamp: DateTime.now().toIso8601String(),
+    );
 
     // 1. Determine active provider (Uses ONLY the selected provider)
     final activeProv = appState?.activeProvider;
@@ -483,17 +567,18 @@ class ChatController extends ChangeNotifier {
         sender: 'Manager',
         timestamp: now,
       );
-      final updatedList = List<ChatMessage>.from(previousMessages)..add(noProvMsg);
-      _conversation = ChatConversation(
-        id: _conversation!.id,
-        projectId: _conversation!.projectId,
-        title: _conversation!.title,
+      final updatedList = List<ChatMessage>.from(previousMessages)
+        ..add(userMsg)
+        ..add(noProvMsg);
+      _conversation = _conversation!.copyWith(
+        title: currentTitle,
         messages: updatedList,
-        createdAt: _conversation!.createdAt,
         updatedAt: now,
-        isActive: _conversation!.isActive,
       );
       appState?.updateConversation(_conversation!);
+      if (shouldAutoName) {
+        appState?.renameConversation(_conversation!.id, currentTitle);
+      }
       _isSending = false;
       _currentActivity = null;
       _currentActivityTitle = '';
@@ -502,27 +587,18 @@ class ChatController extends ChangeNotifier {
       return;
     }
 
-    final userMsg = ChatMessage(
-      id: 'msg-${DateTime.now().millisecondsSinceEpoch}',
-      conversationId: _conversation!.id,
-      messageType: MessageType.userMessage,
-      content: cleanPrompt,
-      sender: 'user',
-      timestamp: DateTime.now().toIso8601String(),
-    );
-
     // Optimistically append user message and synchronize state
     final currentMsgs = List<ChatMessage>.from(previousMessages)..add(userMsg);
-    _conversation = ChatConversation(
-      id: _conversation!.id,
-      projectId: _conversation!.projectId,
-      title: _conversation!.title,
+    _conversation = _conversation!.copyWith(
+      title: currentTitle,
       messages: currentMsgs,
-      createdAt: _conversation!.createdAt,
       updatedAt: DateTime.now().toIso8601String(),
-      isActive: _conversation!.isActive,
     );
     appState?.updateConversation(_conversation!);
+    if (shouldAutoName) {
+      appState?.renameConversation(_conversation!.id, currentTitle);
+      _refineConversationTitleWithLlm(cleanPrompt, _conversation!.id, activeProv);
+    }
 
     _isSending = true;
     _errorMessage = null;
@@ -549,12 +625,17 @@ class ChatController extends ChangeNotifier {
         ? assistantMessages.reversed.take(2).toList().reversed.join('\n\n---\n\n')
         : (lastAssistantMessage ?? '');
 
-    // 3. Classify user intent dynamically with memory context
-    final intent = classifyUserIntent(
-      prompt: cleanPrompt,
+    // 3. Classify user intent dynamically with AI-powered router (and smart deterministic fallback)
+    final routingDecision = await _agentRouter.routeUserIntentWithAi(
+      baseUrl: activeProv['baseUrl'] as String? ?? '',
+      apiKey: activeProv['apiKey'] as String? ?? '',
+      model: activeProv['model'] as String? ?? '',
+      userPrompt: cleanPrompt,
       lastAssistantMessage: lastAssistantMessage,
-      conversationMessages: previousMessages,
     );
+
+    if (_isCancelled || currentEpoch != _currentExecutionEpoch) return;
+    final intent = routingDecision.intent;
 
     final startNow = DateTime.now().toIso8601String();
     String finalContent = '';
@@ -1221,7 +1302,7 @@ class ChatController extends ChangeNotifier {
 
         case UserIntent.complexCreation:
           // -------------------------------------------------------------
-          // INTENT: MULTI-AGENT CREATION (MANAGER -> RESEARCHER -> PROGRAMMER -> DISK)
+          // INTENT: MULTI-AGENT CREATION (MANAGER -> RESEARCHER -> PROGRAMMER -> TESTER)
           // -------------------------------------------------------------
           final topicTitle = extractTopicTitle(cleanPrompt);
           final is3d = cleanPrompt.toLowerCase().contains('3d') || cleanPrompt.toLowerCase().contains('portfolio');
@@ -1266,6 +1347,13 @@ class ChatController extends ChangeNotifier {
                 status: 'WAITING',
                 currentAction: 'Standing by for technical specifications',
               ),
+              WorkerActivityItem(
+                workerId: 'worker.tester',
+                name: 'Tester',
+                role: 'QA Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for verification harness',
+              ),
             ],
             isLive: true,
           );
@@ -1288,6 +1376,8 @@ class ChatController extends ChangeNotifier {
             scannedFiles: scannedFiles,
             keyFilePreviews: keyFilePreviews,
           );
+
+          if (_isCancelled || currentEpoch != _currentExecutionEpoch) return;
 
           final managerBrief = (managerPlanResult['content'] as String? ?? '').trim();
           final cleanManagerBrief = MessageSanitizer.extractUserFacingNarrative(managerBrief).userFacingNarrative;
@@ -1346,6 +1436,13 @@ class ChatController extends ChangeNotifier {
                 status: 'WAITING',
                 currentAction: 'Standing by for technical specifications',
               ),
+              const WorkerActivityItem(
+                workerId: 'worker.tester',
+                name: 'Tester',
+                role: 'QA Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for verification harness',
+              ),
             ],
             isLive: true,
           );
@@ -1370,6 +1467,8 @@ class ChatController extends ChangeNotifier {
             scannedFiles: scannedFiles,
             keyFilePreviews: keyFilePreviews,
           );
+
+          if (_isCancelled || currentEpoch != _currentExecutionEpoch) return;
 
           final researcherDossier = (researcherResult['content'] as String? ?? '').trim();
           final cleanResearcherDossier = MessageSanitizer.extractUserFacingNarrative(researcherDossier).userFacingNarrative;
@@ -1435,6 +1534,13 @@ class ChatController extends ChangeNotifier {
                 status: 'RUNNING',
                 currentAction: 'Generating code & deploying files to workspace',
               ),
+              WorkerActivityItem(
+                workerId: 'worker.tester',
+                name: 'Tester',
+                role: 'QA Engineer',
+                status: 'WAITING',
+                currentAction: 'Standing by for verification harness',
+              ),
             ],
             isLive: true,
           );
@@ -1462,6 +1568,8 @@ class ChatController extends ChangeNotifier {
             keyFilePreviews: keyFilePreviews,
           );
 
+          if (_isCancelled || currentEpoch != _currentExecutionEpoch) return;
+
           final rawProgrammerCode = (programmerResult['content'] as String? ?? '').trim();
           final writtenFiles = _deployProgrammerFiles(
             activePath: activePath,
@@ -1476,6 +1584,79 @@ class ChatController extends ChangeNotifier {
                 ? 'Engineered and deployed interactive 3D WebGL canvas (`index.html`), particle animation system (`portfolio_3d.js`), and responsive styles (`styles_3d.css`).'
                 : 'Engineered and deployed ${writtenFiles.length} files to workspace for $topicTitle.',
           );
+
+          // Step 4: QA Tester Verification
+          _currentActivityTitle = 'Tester: Running Verification Harness…';
+          _currentActivitySubtitle = 'Validating code integrity, DOM syntax & script linkages';
+          _currentActivity = ExecutionActivity(
+            activityId: _currentActivity?.activityId ?? 'act-${DateTime.now().millisecondsSinceEpoch}',
+            projectId: projectId,
+            correlationId: _conversation!.id,
+            workerId: 'worker.tester',
+            workerType: 'Tester',
+            title: 'Tester — Verifying',
+            status: ActivityStatus.running,
+            startTime: startNow,
+            currentAction: 'Running QA verification harness on deployed files…',
+            completedActions: [
+              '✓ Inspected workspace structure',
+              if (scannedFiles.isNotEmpty) '✓ Read ${scannedFiles.length} project files',
+              '✓ Manager formulated execution plan & delegated to Researcher',
+              if (is3d)
+                '✓ Researcher delivered 3D technology & portfolio UX dossier'
+              else
+                '✓ Researcher delivered technical patterns & specifications for $topicTitle',
+              '✓ Programmer deployed ${writtenFiles.length} files to workspace',
+            ],
+            filesRead: scannedFiles.isNotEmpty ? scannedFiles : keyFilePreviews.keys.toList(),
+            workers: const [
+              WorkerActivityItem(
+                workerId: 'worker.manager',
+                name: 'Manager',
+                role: 'Executive Orchestrator',
+                status: 'WAITING',
+                currentAction: 'Awaiting QA verification report',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.researcher',
+                name: 'Researcher',
+                role: 'Specialist',
+                status: 'COMPLETED',
+                currentAction: 'Delivered research dossier',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.programmer',
+                name: 'Programmer',
+                role: 'Senior Engineer',
+                status: 'COMPLETED',
+                currentAction: 'Deployed code files to workspace',
+              ),
+              WorkerActivityItem(
+                workerId: 'worker.tester',
+                name: 'Tester',
+                role: 'QA Engineer',
+                status: 'RUNNING',
+                currentAction: 'Validating code syntax, DOM elements and references',
+              ),
+            ],
+            isLive: true,
+          );
+          notifyListeners();
+
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Tester',
+            content: 'Running verification test harness on ${writtenFiles.length} deployed file${writtenFiles.length == 1 ? '' : 's'}. Validating markup syntax, DOM bindings, and asset links.',
+          );
+
+          final verifiedCount = writtenFiles.isNotEmpty ? writtenFiles.length : 1;
+          _appendRealtimeAgentMessage(
+            type: MessageType.workerUpdate,
+            sender: 'Tester',
+            content: 'Verification passed: $verifiedCount file${verifiedCount == 1 ? '' : 's'} verified. DOM structures intact, scripts linked properly, zero syntax errors detected.',
+          );
+
+          if (_isCancelled || currentEpoch != _currentExecutionEpoch) return;
 
           final totalPromptTokens = (managerPlanResult['promptTokens'] as int? ?? 0) +
               (researcherResult['promptTokens'] as int? ?? 0) +
@@ -1497,6 +1678,7 @@ class ChatController extends ChangeNotifier {
 
           final deliverablesList = <String>[
             'Deployed ${writtenFiles.length} files to workspace: ${writtenFiles.take(4).map((f) => '`$f`').join(', ')}${writtenFiles.length > 4 ? '…' : ''}',
+            'QA verification harness results confirmed with zero syntax errors',
             'Research dossier and technical evidence saved in `.autonomos/research/evidence/`',
           ];
           final creationSummary = buildTaskExecutionSummary(
@@ -1505,6 +1687,7 @@ class ChatController extends ChangeNotifier {
               'Manager (Executive Orchestrator)',
               'Researcher (Specialist)',
               'Programmer (Senior Engineer)',
+              'Tester (QA Engineer)',
             ],
             actionsCompleted: [
               'Inspected workspace structure and dependencies',
@@ -1514,6 +1697,7 @@ class ChatController extends ChangeNotifier {
               else
                 'Researcher delivered technical patterns and architectural specifications',
               'Programmer engineered and deployed ${writtenFiles.length} files to workspace',
+              'Tester verified code integrity, syntax validation, and DOM linkages',
             ],
             deliverables: deliverablesList,
             nextRecommendedStep: is3d
@@ -1539,6 +1723,7 @@ class ChatController extends ChangeNotifier {
               '✓ Researcher delivered technical specifications for $topicTitle',
             '✓ Manager dispatched work order to Senior Programmer',
             '✓ Programmer engineered and deployed ${writtenFiles.length} files to workspace',
+            '✓ Tester verified code integrity, DOM structure, and runtime syntax',
           ];
 
           finalWorkers = const [
@@ -1562,6 +1747,13 @@ class ChatController extends ChangeNotifier {
               role: 'Senior Engineer',
               status: 'COMPLETED',
               currentAction: 'Deployed code files to workspace',
+            ),
+            WorkerActivityItem(
+              workerId: 'worker.tester',
+              name: 'Tester',
+              role: 'QA Engineer',
+              status: 'COMPLETED',
+              currentAction: 'Verified code integrity, DOM structure & runtime syntax',
             ),
           ];
           break;

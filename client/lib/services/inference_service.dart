@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'conversation_title_service.dart';
 
 /// Direct real inference service connecting Flutter directly to OpenAI-compatible custom endpoints.
 /// Configured for AutonomOS Manager Dry-Run & Orchestration Observation Mode.
@@ -159,6 +160,36 @@ class InferenceService {
       } catch (secondError) {
         rethrow;
       }
+    }
+  }
+
+  Future<String> generateConversationTitle({
+    required String baseUrl,
+    required String apiKey,
+    required String model,
+    required String userPrompt,
+  }) async {
+    const systemPrompt = '''
+You are AutonomOS Conversation Titler.
+Task: Summarize the user prompt into a short, concise conversation title.
+Constraints:
+- Strictly UNDER 5 words (1 to 4 words maximum).
+- Capitalize Each Word (Title Case).
+- Capture the primary topic, product, issue, or question.
+- Do NOT output quotes, prefixes (like "Title:"), punctuation, or markdown.
+- Return ONLY the title text.
+''';
+    try {
+      final uri = _getChatUri(baseUrl);
+      final messages = [
+        {'role': 'system', 'content': systemPrompt},
+        {'role': 'user', 'content': userPrompt},
+      ];
+      final response = await _postRequest(uri, apiKey, model, messages);
+      final rawContent = response['content'] as String? ?? '';
+      return sanitizeConversationTitle(rawContent);
+    } catch (_) {
+      return '';
     }
   }
 

@@ -98,6 +98,26 @@ class ChatConversation {
     );
   }
 
+  ChatConversation copyWith({
+    String? id,
+    String? projectId,
+    String? title,
+    List<ChatMessage>? messages,
+    String? createdAt,
+    String? updatedAt,
+    bool? isActive,
+  }) {
+    return ChatConversation(
+      id: id ?? this.id,
+      projectId: projectId ?? this.projectId,
+      title: title ?? this.title,
+      messages: messages ?? this.messages,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isActive: isActive ?? this.isActive,
+    );
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'project_id': projectId,

@@ -215,7 +215,7 @@ class TestTesterPlanningIntegration(unittest.TestCase):
     def test_backend_only_change(self) -> None:
         """Scenario 10: Backend change produces backend functional tests without manufacturing UI tests."""
         wo = self._make_work_order(
-            test_scope=TestScope(components=[], routes=[], environments=["staging"]),
+            test_scope=TestScope(features=["database_pool"], environments=["staging"]),
             acceptance_criteria=[
                 AcceptanceCriterion(criterion_id="ac-db-01", description="Database connection pool handles reconnections."),
             ],
@@ -298,9 +298,12 @@ class TestTesterPlanningIntegration(unittest.TestCase):
         Execution terminates cleanly with NO_APPLICABLE_TESTS without executing tests.
         """
         wo = self._make_work_order(
-            acceptance_criteria=[],
+            acceptance_criteria=[
+                AcceptanceCriterion(criterion_id="ac-ui-01", description="User can click submit button."),
+            ],
             required_flows=[],
             test_scope=TestScope(features=["documentation"], environments=["staging"]),
+            authorized_capabilities=[TestingCapability.TEST_EXECUTION],
         )
         execution = self.bridge.dispatch_work_order(wo)
 
@@ -456,7 +459,7 @@ class TestTesterPlanningIntegration(unittest.TestCase):
             blocker_id="tblk-env-down-01",
             execution_id=execution.execution_id,
             work_order_id=wo.work_order_id,
-            category=TesterBlockerCategory.ENVIRONMENT_UNAVAILABLE,
+            category=TesterBlockerCategory.ENVIRONMENT,
             severity=TesterBlockerSeverity.CRITICAL,
             description="Staging server is not responding.",
         )
@@ -548,6 +551,8 @@ class TestTesterPlanningIntegration(unittest.TestCase):
         zero_plan.mark_validated()
         zero_plan.freeze()
         zero_exec.attach_test_plan(zero_plan)
+        zero_exec.transition_to(TesterExecutionStatus.PLANNING)
+        zero_exec.transition_to(TesterExecutionStatus.PLAN_VALIDATION)
         zero_exec.transition_to(TesterExecutionStatus.PLAN_FROZEN)
 
         with self.assertRaises(TesterValidationError):

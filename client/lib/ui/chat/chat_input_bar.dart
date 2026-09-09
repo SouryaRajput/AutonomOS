@@ -224,20 +224,61 @@ class _ChatInputBarState extends State<ChatInputBar> {
                         const SizedBox(width: AppTokens.space6),
                         _buildQuickActionChip('/test', 'Run verification test harness', isDark),
                         const Spacer(),
-                        Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: _handleSend,
-                            borderRadius: AppTokens.borderRadiusSm,
-                            child: Container(
-                              padding: const EdgeInsets.all(AppTokens.space6),
-                              decoration: BoxDecoration(
-                                color: AppTokens.brandPrimary,
+                        AnimatedBuilder(
+                          animation: widget.controller,
+                          builder: (context, _) {
+                            final isSending = widget.controller.isSending;
+                            if (isSending) {
+                              return Tooltip(
+                                message: 'Stop workforce execution (Hard stop)',
+                                child: Material(
+                                  color: Colors.transparent,
+                                  child: InkWell(
+                                    onTap: () => widget.controller.stopExecution(),
+                                    borderRadius: AppTokens.borderRadiusSm,
+                                    child: Container(
+                                      padding: const EdgeInsets.all(AppTokens.space6),
+                                      decoration: BoxDecoration(
+                                        color: Colors.red.withOpacity(0.18),
+                                        borderRadius: AppTokens.borderRadiusSm,
+                                        border: Border.all(color: Colors.redAccent, width: 1.2),
+                                      ),
+                                      child: const SizedBox(
+                                        width: 14,
+                                        height: 14,
+                                        child: Stack(
+                                          alignment: Alignment.center,
+                                          children: [
+                                            CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              valueColor: AlwaysStoppedAnimation<Color>(Colors.redAccent),
+                                            ),
+                                            Icon(Icons.stop_rounded, size: 8, color: Colors.redAccent),
+                                          ],
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }
+
+                            return Material(
+                              color: Colors.transparent,
+                              child: InkWell(
+                                onTap: _handleSend,
                                 borderRadius: AppTokens.borderRadiusSm,
+                                child: Container(
+                                  padding: const EdgeInsets.all(AppTokens.space6),
+                                  decoration: BoxDecoration(
+                                    color: AppTokens.brandPrimary,
+                                    borderRadius: AppTokens.borderRadiusSm,
+                                  ),
+                                  child: const Icon(Icons.keyboard_return, size: 14, color: Colors.white),
+                                ),
                               ),
-                              child: const Icon(Icons.keyboard_return, size: 14, color: Colors.white),
-                            ),
-                          ),
+                            );
+                          },
                         ),
                       ],
                     ),

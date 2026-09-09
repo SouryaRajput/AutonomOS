@@ -212,6 +212,7 @@ class TestPlanningPipeline:
                 work_order=work_order,
                 test_context=context,
                 applicability_report=app_report,
+                auto_freeze=False,
             )
 
         execution.traces.append(
@@ -280,7 +281,10 @@ class TestPlanningPipeline:
         if not val_result.is_valid:
             error_msgs = [f"[{i.code.value}] {i.message}" for i in val_result.issues]
             combined_error = "; ".join(error_msgs)
-            plan.mark_invalid(combined_error)
+            if not plan.is_frozen:
+                plan.mark_invalid(combined_error)
+            else:
+                plan.status = TestPlanStatus.INVALID
 
             self._emit(
                 event_type=EventType.TESTER_PLAN_FAILED,
@@ -304,8 +308,10 @@ class TestPlanningPipeline:
             )
 
         # 8. Freeze valid TestPlan
-        plan.mark_validated()
-        plan.freeze()
+        if not plan.is_validated:
+            plan.mark_validated()
+        if not plan.is_frozen:
+            plan.freeze()
         execution.attach_test_plan(plan)
 
         self._emit(

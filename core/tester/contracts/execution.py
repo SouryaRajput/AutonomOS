@@ -11,6 +11,8 @@ from core.tester.contracts.context import TestContext
 from core.tester.contracts.coverage import CoverageGap, TestCoverageReport
 from core.tester.contracts.criteria import AcceptanceCriterion
 from core.tester.contracts.plan import TestPlan
+from core.tester.contracts.observation import TesterObservation
+from core.tester.contracts.observation_set import ObservationSet
 from core.tester.contracts.finding import (
     AcceptanceCriterionResult,
     TesterDefect,
@@ -41,6 +43,7 @@ from core.tester.types import (
     DefectSeverity,
     DefectType,
     FindingCategory,
+    ObservationType,
     ShipRecommendation,
     TesterActionType,
     TesterBlockerCategory,
@@ -80,6 +83,8 @@ class TesterExecution:
     transition_history: list[dict[str, Any]] = field(default_factory=list)
     test_cases: list[TestCaseResult] = field(default_factory=list)
     evidence: list[TesterEvidence] = field(default_factory=list)
+    observations: list[TesterObservation] = field(default_factory=list)
+    observation_sets: list[ObservationSet] = field(default_factory=list)
     defects: list[TesterDefect] = field(default_factory=list)
     findings: list[TesterFinding] = field(default_factory=list)
     acceptance_results: list[AcceptanceCriterionResult] = field(default_factory=list)
@@ -557,8 +562,11 @@ class TesterExecution:
             TesterExecutionStatus.COMPLETED,
         }:
             raise TesterBoundaryViolationError(
-                f"Cannot attach or mutate TestPlan when execution is in {self.status.value} status. "
-                "Dynamic test plan mutation after execution starts is strictly prohibited."
+                action="ATTACH_TEST_PLAN",
+                reason=(
+                    f"Cannot attach or mutate TestPlan when execution is in {self.status.value} status. "
+                    "Dynamic test plan mutation after execution starts is strictly prohibited."
+                ),
             )
         if getattr(test_plan, "status", None) == TestPlanStatus.INVALID:
             raise TesterValidationError("Cannot attach an INVALID TestPlan to execution.")
@@ -575,6 +583,85 @@ class TesterExecution:
                 f"Cannot attach TestPlan: project_id mismatch ('{test_plan.project_id}' != '{self.project_id}')."
             )
         self.test_plan = test_plan
+
+    def record_observation(self, observation: TesterObservation) -> None:
+        """
+        Record a factual, descriptive observation into this execution session.
+        Enforces causal lineage, project isolation, and immutability.
+        """
+        if not isinstance(observation, TesterObservation):
+            raise TesterValidationError(
+                f"Expected TesterObservation instance, got {type(observation).__name__}."
+            )
+        if observation.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot record observation: execution_id mismatch ('{observation.execution_id}' != '{self.execution_id}')."
+            )
+        if observation.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Project isolation violation: observation project_id ('{observation.project_id}') != execution project_id ('{self.project_id}')."
+            )
+        if any(o.observation_id == observation.observation_id for o in self.observations):
+            raise TesterValidationError(
+                f"Observation '{observation.observation_id}' is already recorded in this execution."
+            )
+        self.observations.append(observation)
+
+    def get_observations(
+        self,
+        test_case_id: Optional[str] = None,
+        test_step_id: Optional[str] = None,
+        observation_type: Optional[Union[ObservationType, str]] = None,
+    ) -> list[TesterObservation]:
+        """Query recorded observations by test case, test step, or observation type."""
+        results = list(self.observations)
+        if test_case_id is not None:
+            results = [o for o in results if o.test_case_id == test_case_id]
+        if test_step_id is not None:
+            results = [o for o in results if o.test_step_id == test_step_id]
+        if observation_type is not None:
+            target_type = (
+                observation_type.value
+                if hasattr(observation_type, "value")
+                else str(observation_type).upper()
+            )
+            results = [
+                o for o in results
+                if (o.observation_type.value if hasattr(o.observation_type, "value") else str(o.observation_type)) == target_type
+            ]
+        return results
+
+    def record_observation_set(self, observation_set: ObservationSet) -> None:
+        """
+        Record an aggregated ObservationSet into this execution session.
+        Enforces causal lineage, project isolation, and duplicates check.
+        """
+        if not isinstance(observation_set, ObservationSet):
+            raise TesterValidationError(
+                f"Expected ObservationSet instance, got {type(observation_set).__name__}."
+            )
+        if observation_set.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot record observation set: execution_id mismatch ('{observation_set.execution_id}' != '{self.execution_id}')."
+            )
+        if observation_set.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Project isolation violation: observation set project_id ('{observation_set.project_id}') != execution project_id ('{self.project_id}')."
+            )
+        if any(s.observation_set_id == observation_set.observation_set_id for s in self.observation_sets):
+            raise TesterValidationError(
+                f"ObservationSet '{observation_set.observation_set_id}' is already recorded in this execution."
+            )
+        self.observation_sets.append(observation_set)
+
+    def get_observation_sets(
+        self,
+        test_case_id: Optional[str] = None,
+    ) -> list[ObservationSet]:
+        """Query recorded observation sets by test case ID."""
+        if test_case_id is not None:
+            return [s for s in self.observation_sets if s.test_case_id == test_case_id]
+        return list(self.observation_sets)
 
     def validate_lineage(
         self,
@@ -745,6 +832,8 @@ class TesterExecution:
             "transition_history": list(self.transition_history),
             "test_cases": [tc.to_dict() for tc in self.test_cases],
             "evidence": [ev.to_dict() for ev in self.evidence],
+            "observations": [obs.to_dict() for obs in self.observations],
+            "observation_sets": [s.to_dict() for s in self.observation_sets],
             "defects": [d.to_dict() for d in self.defects],
             "findings": [f.to_dict() for f in self.findings],
             "acceptance_results": [a.to_dict() for a in self.acceptance_results],
@@ -778,6 +867,14 @@ class TesterExecution:
         evidence = [
             TesterEvidence.from_dict(ev) if isinstance(ev, dict) else ev
             for ev in data.get("evidence", [])
+        ]
+        observations = [
+            TesterObservation.from_dict(obs) if isinstance(obs, dict) else obs
+            for obs in data.get("observations", [])
+        ]
+        observation_sets = [
+            ObservationSet.from_dict(s) if isinstance(s, dict) else s
+            for s in data.get("observation_sets", [])
         ]
         defects = [
             TesterDefect.from_dict(d) if isinstance(d, dict) else d
@@ -820,6 +917,8 @@ class TesterExecution:
             transition_history=list(data.get("transition_history", [])),
             test_cases=test_cases,
             evidence=evidence,
+            observations=observations,
+            observation_sets=observation_sets,
             defects=defects,
             findings=findings,
             acceptance_results=acceptance_results,
