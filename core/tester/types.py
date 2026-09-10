@@ -87,10 +87,24 @@ class DefectType(str, Enum):
     FUNCTIONAL = "FUNCTIONAL"
     REGRESSION = "REGRESSION"
     CRASH = "CRASH"
+    RUNTIME = "RUNTIME"
+    API = "API"
+    NAVIGATION = "NAVIGATION"
+    RESOURCE = "RESOURCE"
+    BUILD = "BUILD"
+    INTEGRATION = "INTEGRATION"
     SECURITY = "SECURITY"
     PERFORMANCE = "PERFORMANCE"
     UX = "UX"
     SPEC_VIOLATION = "SPEC_VIOLATION"
+    VISUAL = "VISUAL"
+    LAYOUT = "LAYOUT"
+    SCROLL = "SCROLL"
+    OVERFLOW = "OVERFLOW"
+    RESPONSIVE = "RESPONSIVE"
+    TYPOGRAPHY = "TYPOGRAPHY"
+    ANIMATION = "ANIMATION"
+    STABILITY = "STABILITY"
     OTHER = "OTHER"
 
 
@@ -109,9 +123,11 @@ class AcceptanceCriterionStatus(str, Enum):
     __test__ = False
     PASS = "PASS"
     FAIL = "FAIL"
+    BLOCKED = "BLOCKED"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
     UNCERTAIN = "UNCERTAIN"
     NOT_EVALUATED = "NOT_EVALUATED"
-    NOT_VERIFIED = "NOT_VERIFIED"
 
 
 class TestCaseStatus(str, Enum):
@@ -196,6 +212,8 @@ class TesterActionType(str, Enum):
     EVALUATE_COVERAGE = "EVALUATE_COVERAGE"
     VALIDATE_PLAN = "VALIDATE_PLAN"
     FREEZE_PLAN = "FREEZE_PLAN"
+    PREFLIGHT_CHECK = "PREFLIGHT_CHECK"
+    EVALUATE_RUNTIME = "EVALUATE_RUNTIME"
 
 
 class TestingCapability(str, Enum):
@@ -469,7 +487,14 @@ class ApplicableTestCategory(str, Enum):
     OCR = "OCR"
     VIDEO = "VIDEO"
     PERFORMANCE = "PERFORMANCE"
+    LOAD = "LOAD"
+    INTERACTION = "INTERACTION"
+    NETWORK = "NETWORK"
+    RESOURCE = "RESOURCE"
+    STABILITY = "STABILITY"
     INTEGRATION = "INTEGRATION"
+    TYPOGRAPHY = "TYPOGRAPHY"
+    UX = "UX"
 
 
 # ---------------------------------------------------------------------------
@@ -680,3 +705,473 @@ class ObservationCompleteness(str, Enum):
     PARTIAL = "PARTIAL"
     EMPTY = "EMPTY"
     FAILED = "FAILED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.1 Test Preflight & Application Health Enums
+# ---------------------------------------------------------------------------
+
+class PreflightStatus(str, Enum):
+    """Execution status of application preflight and health verification."""
+    __test__ = False
+    PASS = "PASS"
+    WARNINGS = "WARNINGS"
+    FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+    NOT_VERIFIED = "NOT_VERIFIED"
+
+
+class PreflightDecision(str, Enum):
+    """Authoritative decision on whether planned test execution can proceed."""
+    __test__ = False
+    READY = "READY"
+    READY_WITH_WARNINGS = "READY_WITH_WARNINGS"
+    FAILED = "FAILED"
+    BLOCKED = "BLOCKED"
+
+
+class ApplicationHealthStatus(str, Enum):
+    """Evaluated runtime operational health of the application under test."""
+    __test__ = False
+    HEALTHY = "HEALTHY"
+    DEGRADED = "DEGRADED"
+    UNHEALTHY = "UNHEALTHY"
+    UNREACHABLE = "UNREACHABLE"
+    STARTUP_FAILED = "STARTUP_FAILED"
+    UNKNOWN = "UNKNOWN"
+
+
+class BuildStatus(str, Enum):
+    """Verification status of authorized build or compilation steps."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    SKIPPED = "SKIPPED"
+    NOT_APPLICABLE = "NOT_APPLICABLE"
+
+
+# ---------------------------------------------------------------------------
+# Phase 5.3 Runtime & Request Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class RuntimeEventType(str, Enum):
+    """Taxonomy of runtime events observed during application execution."""
+    __test__ = False
+    HTTP_REQUEST = "HTTP_REQUEST"
+    HTTP_RESPONSE = "HTTP_RESPONSE"
+    CONSOLE_ERROR = "CONSOLE_ERROR"
+    CONSOLE_WARNING = "CONSOLE_WARNING"
+    PROCESS_ERROR = "PROCESS_ERROR"
+    APPLICATION_CRASH = "APPLICATION_CRASH"
+    SERVER_TERMINATION = "SERVER_TERMINATION"
+    BROWSER_CRASH = "BROWSER_CRASH"
+    UNHANDLED_EXCEPTION = "UNHANDLED_EXCEPTION"
+    UNREACHABLE = "UNREACHABLE"
+    NAVIGATION_FAILURE = "NAVIGATION_FAILURE"
+    RESOURCE_FAILURE = "RESOURCE_FAILURE"
+    API_FAILURE = "API_FAILURE"
+
+
+class RuntimeEventSeverity(str, Enum):
+    """
+    Technical seriousness classification of an observed runtime event.
+    Does not itself determine final defect severity.
+    """
+    __test__ = False
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.1 Visual Assertion & Geometry Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class VisualCheckType(str, Enum):
+    """Taxonomy of deterministic visual and geometric checks evaluated in Tester V1."""
+    __test__ = False
+    OVERLAP = "OVERLAP"
+    CLIPPING = "CLIPPING"
+    CONTAINER_BOUNDS = "CONTAINER_BOUNDS"
+    VIEWPORT_OVERFLOW = "VIEWPORT_OVERFLOW"
+    VISIBILITY = "VISIBILITY"
+    GEOMETRY_ASSERTION = "GEOMETRY_ASSERTION"
+
+
+class VisualAssertionStatus(str, Enum):
+    """Evaluation status of a discrete visual assertion or geometry check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIPPED = "SKIPPED"
+    UNVERIFIED = "UNVERIFIED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.2 Scrolling & Overflow Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class ScrollDirection(str, Enum):
+    """Supported directional vectors for scrolling evaluations."""
+    __test__ = False
+    VERTICAL = "VERTICAL"
+    HORIZONTAL = "HORIZONTAL"
+    UP = "UP"
+    DOWN = "DOWN"
+    LEFT = "LEFT"
+    RIGHT = "RIGHT"
+
+
+class ScrollEvaluationStatus(str, Enum):
+    """Operational evaluation status for a discrete scrolling check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    BLOCKED = "BLOCKED"
+    UNVERIFIED = "UNVERIFIED"
+    SKIPPED = "SKIPPED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.3 Responsive Layout Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class DeviceCategory(str, Enum):
+    """Categorization of display viewport profile for responsive evaluation."""
+    __test__ = False
+    MOBILE = "MOBILE"
+    TABLET = "TABLET"
+    DESKTOP = "DESKTOP"
+    CUSTOM = "CUSTOM"
+
+
+class ResponsiveCheckType(str, Enum):
+    """Taxonomy of deterministic responsive layout checks evaluated in Tester V1."""
+    __test__ = False
+    CLIPPING = "CLIPPING"
+    HORIZONTAL_OVERFLOW = "HORIZONTAL_OVERFLOW"
+    INACCESSIBLE_CONTROL = "INACCESSIBLE_CONTROL"
+    OVERLAP = "OVERLAP"
+    NAVIGATION_ADAPTATION = "NAVIGATION_ADAPTATION"
+    CONTENT_VISIBILITY = "CONTENT_VISIBILITY"
+    LAYOUT_COLLAPSE = "LAYOUT_COLLAPSE"
+
+
+class ResponsiveEvaluationStatus(str, Enum):
+    """Operational evaluation status for a discrete responsive layout check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    SKIPPED = "SKIPPED"
+    UNVERIFIED = "UNVERIFIED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.4 Typography & Text Presentation Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class TypographyCheckType(str, Enum):
+    """Taxonomy of deterministic typography and text presentation checks in Tester V1."""
+    __test__ = False
+    REQUIRED_TEXT_MISSING = "REQUIRED_TEXT_MISSING"
+    TEXT_CLIPPING = "TEXT_CLIPPING"
+    TEXT_OVERLAP = "TEXT_OVERLAP"
+    TEXT_OUTSIDE_EXPECTED_REGION = "TEXT_OUTSIDE_EXPECTED_REGION"
+    SEVERE_WRAPPING = "SEVERE_WRAPPING"
+    UNREADABLE_TEXT = "UNREADABLE_TEXT"
+    SUBJECTIVE_AESTHETIC = "SUBJECTIVE_AESTHETIC"
+
+
+class TypographyEvaluationStatus(str, Enum):
+    """Evaluation status for a discrete typography or text presentation check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    SKIPPED = "SKIPPED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.5 Animation & Transition Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class AnimationCheckType(str, Enum):
+    """Taxonomy of deterministic animation and transition checks in Tester V1."""
+    __test__ = False
+    START_ON_TRIGGER = "START_ON_TRIGGER"
+    REACH_EXPECTED_STATE = "REACH_EXPECTED_STATE"
+    TRANSITION_COMPLETION = "TRANSITION_COMPLETION"
+    ELEMENT_APPEARANCE = "ELEMENT_APPEARANCE"
+    ELEMENT_DISAPPEARANCE = "ELEMENT_DISAPPEARANCE"
+    VISUAL_JUMP_OR_COLLAPSE = "VISUAL_JUMP_OR_COLLAPSE"
+    STUCK_ANIMATION = "STUCK_ANIMATION"
+    INCOMPLETE_FINAL_STATE = "INCOMPLETE_FINAL_STATE"
+    SUBJECTIVE_MOTION = "SUBJECTIVE_MOTION"
+
+
+class AnimationEvaluationStatus(str, Enum):
+    """Operational evaluation status for an animation or transition check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    BLOCKED = "BLOCKED"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    SKIPPED = "SKIPPED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 6.6 UX Flow & Usability Evaluation Enums
+# ---------------------------------------------------------------------------
+
+class UXCheckType(str, Enum):
+    """Taxonomy of concrete UX flow and usability checks in Tester V1."""
+    __test__ = False
+    REQUIRED_ACTION_BLOCKED = "REQUIRED_ACTION_BLOCKED"
+    INACCESSIBLE_CONTROL = "INACCESSIBLE_CONTROL"
+    CONFUSING_NAVIGATION = "CONFUSING_NAVIGATION"
+    UNEXPECTED_STEP = "UNEXPECTED_STEP"
+    MISSING_FEEDBACK = "MISSING_FEEDBACK"
+    UNRECOVERABLE_ERROR = "UNRECOVERABLE_ERROR"
+    ONBOARDING_FAILURE = "ONBOARDING_FAILURE"
+    MISSING_NEXT_ACTION = "MISSING_NEXT_ACTION"
+    SUBJECTIVE_PREFERENCE = "SUBJECTIVE_PREFERENCE"
+    VAGUE_CRITIQUE = "VAGUE_CRITIQUE"
+
+
+class UXEvaluationStatus(str, Enum):
+    """Operational evaluation status for a UX flow check."""
+    __test__ = False
+    PASS = "PASS"
+    FAIL = "FAIL"
+    BLOCKED = "BLOCKED"
+    NOT_VERIFIED = "NOT_VERIFIED"
+    SKIPPED = "SKIPPED"
+    DISCARDED = "DISCARDED"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7.1 Performance Context & Measurement Enums
+# ---------------------------------------------------------------------------
+
+class PerformanceMetricType(str, Enum):
+    """Taxonomy of measurable runtime performance metrics in Tester V1."""
+    __test__ = False
+    NAVIGATION_DURATION = "navigation_duration"
+    PAGE_LOAD_DURATION = "page_load_duration"
+    APPLICATION_STARTUP_DURATION = "application_startup_duration"
+    FIRST_CONTENTFUL_PAINT = "first_contentful_paint"
+    LARGEST_CONTENTFUL_PAINT = "largest_contentful_paint"
+    DOM_CONTENT_LOADED = "dom_content_loaded"
+    LOAD_EVENT_DURATION = "load_event_duration"
+    INTERACTION_DURATION = "interaction_duration"
+    ACTION_EXECUTION_DURATION = "action_execution_duration"
+    STATE_READINESS_DURATION = "state_readiness_duration"
+    ROUTE_TRANSITION_DURATION = "route_transition_duration"
+    PAGE_READINESS_DURATION = "page_readiness_duration"
+    REQUEST_DURATION = "request_duration"
+    TOTAL_REQUESTS = "total_requests"
+    FAILED_REQUESTS = "failed_requests"
+    RESOURCE_COUNT = "resource_count"
+    TRANSFER_SIZE = "transfer_size"
+    CPU_USAGE = "cpu_usage"
+    MEMORY_USAGE = "memory_usage"
+    CRASH_COUNT = "crash_count"
+    ERROR_COUNT = "error_count"
+
+    @classmethod
+    def from_str(cls, value: str) -> PerformanceMetricType:
+        """Resolve metric from case-insensitive string or alias."""
+        normalized = value.strip().lower()
+        if normalized in ("dom_content_loaded", "domcontentloaded", "dom_content_loaded_duration"):
+            return cls.DOM_CONTENT_LOADED
+        if normalized in ("application_startup_duration", "app_startup_duration", "startup_duration"):
+            return cls.APPLICATION_STARTUP_DURATION
+        if normalized in ("route_transition_duration", "route_transition", "transition_duration"):
+            return cls.ROUTE_TRANSITION_DURATION
+        if normalized in ("page_readiness_duration", "readiness_duration", "page_readiness"):
+            return cls.PAGE_READINESS_DURATION
+        if normalized in ("action_execution_duration", "action_duration", "execution_duration"):
+            return cls.ACTION_EXECUTION_DURATION
+        if normalized in ("state_readiness_duration", "state_duration", "transition_readiness_duration"):
+            return cls.STATE_READINESS_DURATION
+        if normalized in ("interaction_duration", "total_interaction_duration", "ux_duration"):
+            return cls.INTERACTION_DURATION
+        if normalized in ("transfer_size", "transfer_size_bytes", "bytes_transferred", "payload_size"):
+            return cls.TRANSFER_SIZE
+        if normalized in ("cpu_usage", "cpu", "cpu_percent", "cpu_utilization"):
+            return cls.CPU_USAGE
+        if normalized in ("memory_usage", "memory", "ram", "memory_bytes", "rss"):
+            return cls.MEMORY_USAGE
+        if normalized in ("crash_count", "crashes", "crash_events"):
+            return cls.CRASH_COUNT
+        if normalized in ("error_count", "errors", "runtime_errors"):
+            return cls.ERROR_COUNT
+        for item in cls:
+            if item.value.lower() == normalized or item.name.lower() == normalized:
+                return item
+        raise ValueError(f"Unknown performance metric: '{value}'")
+
+
+class PerformanceMetricUnit(str, Enum):
+    """Units of measurement for performance metrics."""
+    __test__ = False
+    MILLISECONDS = "ms"
+    SECONDS = "s"
+    COUNT = "count"
+    BYTES = "bytes"
+    PERCENTAGE = "%"
+
+
+class PerformanceMeasurementStatus(str, Enum):
+    """Operational status of a performance measurement."""
+    __test__ = False
+    AVAILABLE = "AVAILABLE"
+    UNAVAILABLE = "UNAVAILABLE"
+    INVALID = "INVALID"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7.2 Load & Navigation Performance Enums
+# ---------------------------------------------------------------------------
+
+class PerformanceInitialState(str, Enum):
+    """Clean initial state specification for a load or navigation performance test."""
+    __test__ = False
+    FRESH_PAGE = "FRESH_PAGE"
+    FRESH_CONTEXT = "FRESH_CONTEXT"
+    EXISTING_SESSION = "EXISTING_SESSION"
+
+
+class NavigationPerformanceStatus(str, Enum):
+    """Operational outcome status for a load or navigation performance test."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    APPLICATION_LOAD_FAILED = "APPLICATION_LOAD_FAILED"
+    NAVIGATION_FAILED = "NAVIGATION_FAILED"
+    MEASUREMENT_UNAVAILABLE = "MEASUREMENT_UNAVAILABLE"
+    TIMEOUT = "TIMEOUT"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7.3 Interaction Performance Enums
+# ---------------------------------------------------------------------------
+
+class InteractionPerformanceStatus(str, Enum):
+    """Operational outcome status for an interaction responsiveness performance test."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    TIMEOUT = "TIMEOUT"
+    MISSING_STATE_TRANSITION = "MISSING_STATE_TRANSITION"
+    INTERACTION_FAILED = "INTERACTION_FAILED"
+    MEASUREMENT_UNAVAILABLE = "MEASUREMENT_UNAVAILABLE"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7.4 Network & Resource Performance Enums
+# ---------------------------------------------------------------------------
+
+class ResourceType(str, Enum):
+    """Taxonomy of standard resource categories in Tester V1 network performance."""
+    __test__ = False
+    DOCUMENT = "DOCUMENT"
+    SCRIPT = "SCRIPT"
+    STYLESHEET = "STYLESHEET"
+    IMAGE = "IMAGE"
+    FONT = "FONT"
+    API = "API"
+    MEDIA = "MEDIA"
+    OTHER = "OTHER"
+
+    @classmethod
+    def from_str(cls, value: str) -> ResourceType:
+        normalized = value.strip().upper()
+        for item in cls:
+            if item.value == normalized or item.name == normalized:
+                return item
+        if normalized in ("XHR", "FETCH", "JSON", "GRAPHQL"):
+            return cls.API
+        if normalized in ("CSS",):
+            return cls.STYLESHEET
+        if normalized in ("JS", "JAVASCRIPT"):
+            return cls.SCRIPT
+        if normalized in ("HTML", "DOC"):
+            return cls.DOCUMENT
+        if normalized in ("IMG", "SVG", "PNG", "JPEG", "JPG", "WEBP", "GIF"):
+            return cls.IMAGE
+        if normalized in ("WOFF", "WOFF2", "TTF", "OTF"):
+            return cls.FONT
+        if normalized in ("VIDEO", "AUDIO", "MP4", "WEBM"):
+            return cls.MEDIA
+        return cls.OTHER
+
+
+class ResourceImportance(str, Enum):
+    """Criticality / requirement level of an individual network resource."""
+    __test__ = False
+    REQUIRED = "REQUIRED"
+    OPTIONAL = "OPTIONAL"
+
+
+class NetworkPerformanceStatus(str, Enum):
+    """Operational outcome status for a network and resource performance evaluation."""
+    __test__ = False
+    SUCCESS = "SUCCESS"
+    FAILED = "FAILED"
+    DEGRADED = "DEGRADED"
+    EXCESSIVE_REQUESTS = "EXCESSIVE_REQUESTS"
+    MEASUREMENT_UNAVAILABLE = "MEASUREMENT_UNAVAILABLE"
+
+
+# ---------------------------------------------------------------------------
+# Phase 7.5 Stability & Runtime Health Enums
+# ---------------------------------------------------------------------------
+
+class ProcessState(str, Enum):
+    """Operating lifecycle state of a tested application or server process."""
+    __test__ = False
+    RUNNING = "RUNNING"
+    STOPPED = "STOPPED"
+    TERMINATED = "TERMINATED"
+    CRASHED = "CRASHED"
+    UNKNOWN = "UNKNOWN"
+
+    @classmethod
+    def from_str(cls, value: str) -> ProcessState:
+        normalized = value.strip().upper()
+        for item in cls:
+            if item.value == normalized or item.name == normalized:
+                return item
+        if normalized in ("DEAD", "KILLED", "EXITED"):
+            return cls.TERMINATED
+        if normalized in ("CRASH", "FATAL", "OOM"):
+            return cls.CRASHED
+        if normalized in ("ACTIVE", "LIVE", "ALIVE"):
+            return cls.RUNNING
+        return cls.UNKNOWN
+
+
+class StabilityStatus(str, Enum):
+    """Aggregate operational stability status of the application under test."""
+    __test__ = False
+    STABLE = "STABLE"
+    DEGRADED = "DEGRADED"
+    UNSTABLE = "UNSTABLE"
+    CRITICAL_FAILURE = "CRITICAL_FAILURE"
+    RECOVERY_EXHAUSTED = "RECOVERY_EXHAUSTED"
+
+
+class StabilityFailureType(str, Enum):
+    """Taxonomy of meaningful stability and runtime health failures."""
+    __test__ = False
+    APPLICATION_CRASH = "APPLICATION_CRASH"
+    SERVER_TERMINATION = "SERVER_TERMINATION"
+    BROWSER_CRASH = "BROWSER_CRASH"
+    UNREACHABLE = "UNREACHABLE"
+    REPEATED_EXCEPTION = "REPEATED_EXCEPTION"
+    PERSISTENT_REQUEST_FAILURE = "PERSISTENT_REQUEST_FAILURE"
+    SEVERE_DEGRADATION = "SEVERE_DEGRADATION"
+    TESTER_INFRASTRUCTURE_FAILURE = "TESTER_INFRASTRUCTURE_FAILURE"
+
+
+

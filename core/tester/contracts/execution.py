@@ -13,6 +13,8 @@ from core.tester.contracts.criteria import AcceptanceCriterion
 from core.tester.contracts.plan import TestPlan
 from core.tester.contracts.observation import TesterObservation
 from core.tester.contracts.observation_set import ObservationSet
+from core.tester.contracts.preflight import TestPreflightResult
+from core.tester.contracts.runtime_observation import RuntimeObservation
 from core.tester.contracts.finding import (
     AcceptanceCriterionResult,
     TesterDefect,
@@ -93,6 +95,16 @@ class TesterExecution:
     test_context: Optional[TestContext] = None
     test_applicability: Optional[TestApplicabilityReport] = None
     test_plan: Optional[TestPlan] = None
+    preflight_result: Optional[TestPreflightResult] = None
+    runtime_observations: list[RuntimeObservation] = field(default_factory=list)
+    visual_results: list[Any] = field(default_factory=list)
+    responsive_results: list[Any] = field(default_factory=list)
+    typography_results: list[Any] = field(default_factory=list)
+    animation_results: list[Any] = field(default_factory=list)
+    ux_results: list[Any] = field(default_factory=list)
+    performance_measurements: list[Any] = field(default_factory=list)
+    performance_results: list[Any] = field(default_factory=list)
+    stability_results: list[Any] = field(default_factory=list)
     require_frozen_plan: bool = False
     created_at: str = field(default_factory=utc_now)
 
@@ -435,8 +447,8 @@ class TesterExecution:
 
     def record_defect(
         self,
-        title: str,
-        description: str,
+        title: Optional[str] = None,
+        description: Optional[str] = None,
         severity: DefectSeverity = DefectSeverity.MEDIUM,
         defect_type: DefectType = DefectType.FUNCTIONAL,
         reproduction_steps: Optional[Sequence[str]] = None,
@@ -447,14 +459,36 @@ class TesterExecution:
         is_regression: bool = False,
         defect_id: Optional[str] = None,
         metadata: Optional[dict[str, Any]] = None,
+        defect: Optional[TesterDefect] = None,
+        acceptance_criterion_id: Optional[str] = None,
+        provenance: Optional[dict[str, Any]] = None,
+        test_id: Optional[str] = None,
+        test_case_id: Optional[str] = None,
     ) -> TesterDefect:
         """Record an identified concrete defect bound to this execution."""
-        defect = TesterDefect(
+        if defect is not None:
+            if not isinstance(defect, TesterDefect):
+                raise TesterValidationError("Provided defect must be an instance of TesterDefect.")
+            if defect.work_order_id and defect.work_order_id != self.work_order_id:
+                raise TesterLineageError(
+                    f"Defect work_order_id '{defect.work_order_id}' does not match execution work_order_id '{self.work_order_id}'."
+                )
+            if defect.execution_id and defect.execution_id != self.execution_id:
+                raise TesterLineageError(
+                    f"Defect execution_id '{defect.execution_id}' does not match execution_id '{self.execution_id}'."
+                )
+            defect.work_order_id = self.work_order_id
+            defect.execution_id = self.execution_id
+            self.defects.append(defect)
+            return defect
+
+        tid = test_id or test_case_id
+        inst = TesterDefect(
             defect_id=defect_id or new_defect_id(),
             work_order_id=self.work_order_id,
             execution_id=self.execution_id,
-            title=title,
-            description=description,
+            title=title or "",
+            description=description or "",
             severity=severity,
             defect_type=defect_type,
             reproduction_steps=list(reproduction_steps or []),
@@ -463,10 +497,13 @@ class TesterExecution:
             evidence_ids=list(evidence_ids or []),
             affected_components=list(affected_components or []),
             is_regression=is_regression,
+            test_id=tid,
+            acceptance_criterion_id=acceptance_criterion_id,
+            provenance=dict(provenance or {}),
             metadata=dict(metadata or {}),
         )
-        self.defects.append(defect)
-        return defect
+        self.defects.append(inst)
+        return inst
 
     def record_finding(
         self,
@@ -583,6 +620,52 @@ class TesterExecution:
                 f"Cannot attach TestPlan: project_id mismatch ('{test_plan.project_id}' != '{self.project_id}')."
             )
         self.test_plan = test_plan
+
+    def record_preflight_result(self, preflight_result: TestPreflightResult) -> None:
+        """
+        Record an authoritative TestPreflightResult for this execution.
+        Enforces lineage alignment and project isolation.
+        """
+        if not isinstance(preflight_result, TestPreflightResult):
+            raise TesterValidationError(
+                f"Expected TestPreflightResult instance, got {type(preflight_result).__name__}."
+            )
+        if preflight_result.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot record preflight result: execution_id mismatch ('{preflight_result.execution_id}' != '{self.execution_id}')."
+            )
+        if preflight_result.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Project isolation violation: preflight project_id ('{preflight_result.project_id}') != execution project_id ('{self.project_id}')."
+            )
+        self.preflight_result = preflight_result
+
+    def record_runtime_observation(self, observation: RuntimeObservation) -> None:
+        """
+        Record an evaluated RuntimeObservation into this execution session.
+        Enforces causal lineage, project isolation, and duplicates check.
+        Also automatically registers the corresponding canonical TesterObservation.
+        """
+        if not isinstance(observation, RuntimeObservation):
+            raise TesterValidationError(
+                f"Expected RuntimeObservation instance, got {type(observation).__name__}."
+            )
+        if observation.execution_id != self.execution_id:
+            raise TesterLineageError(
+                f"Cannot record runtime observation: execution_id mismatch ('{observation.execution_id}' != '{self.execution_id}')."
+            )
+        if observation.project_id != self.project_id:
+            raise TesterLineageError(
+                f"Project isolation violation: runtime observation project_id ('{observation.project_id}') != execution project_id ('{self.project_id}')."
+            )
+        if any(ro.event_id == observation.event_id for ro in self.runtime_observations):
+            raise TesterValidationError(
+                f"Runtime observation '{observation.event_id}' is already recorded in this execution."
+            )
+        self.runtime_observations.append(observation)
+        canon_obs = observation.to_observation()
+        if not any(o.observation_id == canon_obs.observation_id for o in self.observations):
+            self.observations.append(canon_obs)
 
     def record_observation(self, observation: TesterObservation) -> None:
         """
@@ -740,6 +823,38 @@ class TesterExecution:
             created_at=utc_now(),
         )
 
+    def record_visual_result(self, result: Any) -> None:
+        """Record a visual evaluation result."""
+        self.visual_results.append(result)
+
+    def record_responsive_result(self, result: Any) -> None:
+        """Record a responsive layout evaluation result."""
+        self.responsive_results.append(result)
+
+    def record_typography_result(self, result: Any) -> None:
+        """Record a typography evaluation result."""
+        self.typography_results.append(result)
+
+    def record_animation_result(self, result: Any) -> None:
+        """Record an animation evaluation result."""
+        self.animation_results.append(result)
+
+    def record_ux_result(self, result: Any) -> None:
+        """Record a UX evaluation result."""
+        self.ux_results.append(result)
+
+    def record_performance_measurement(self, measurement: Any) -> None:
+        """Record a performance measurement."""
+        self.performance_measurements.append(measurement)
+
+    def record_performance_result(self, result: Any) -> None:
+        """Record an evaluated performance test result."""
+        self.performance_results.append(result)
+
+    def record_stability_result(self, result: Any) -> None:
+        """Record an evaluated stability test result."""
+        self.stability_results.append(result)
+
     def create_result(
         self,
         status: Optional[TesterResultStatus] = None,
@@ -807,9 +922,19 @@ class TesterExecution:
             defects=list(self.defects),
             findings=list(self.findings),
             acceptance_results=list(self.acceptance_results),
+            preflight_result=self.preflight_result,
+            runtime_observations=list(self.runtime_observations),
             recommendations=all_recs,
             uncertainties=all_unc,
             blockers=blocker_descs,
+            visual_results=list(self.visual_results),
+            responsive_results=list(self.responsive_results),
+            typography_results=list(self.typography_results),
+            animation_results=list(self.animation_results),
+            ux_results=list(self.ux_results),
+            performance_measurements=list(self.performance_measurements),
+            performance_results=list(self.performance_results),
+            stability_results=list(self.stability_results),
             evidence_ids=sorted(list(all_ev_ids)),
             artifacts=list(artifacts or []),
             metadata=dict(metadata or {}),
@@ -842,6 +967,20 @@ class TesterExecution:
             "test_context": self.test_context.to_dict() if self.test_context else None,
             "test_applicability": self.test_applicability.to_dict() if self.test_applicability else None,
             "test_plan": self.test_plan.to_dict() if self.test_plan else None,
+            "preflight_result": self.preflight_result.to_dict() if self.preflight_result else None,
+            "runtime_observations": [ro.to_dict() for ro in self.runtime_observations],
+            "performance_measurements": [
+                m.to_dict() if hasattr(m, "to_dict") else m
+                for m in self.performance_measurements
+            ],
+            "performance_results": [
+                r.to_dict() if hasattr(r, "to_dict") else r
+                for r in self.performance_results
+            ],
+            "stability_results": [
+                s.to_dict() if hasattr(s, "to_dict") else s
+                for s in self.stability_results
+            ],
             "created_at": self.created_at,
         }
 
@@ -901,6 +1040,15 @@ class TesterExecution:
         raw_plan = data.get("test_plan")
         test_plan = TestPlan.from_dict(raw_plan) if isinstance(raw_plan, dict) else None
 
+        raw_preflight = data.get("preflight_result")
+        preflight_result = TestPreflightResult.from_dict(raw_preflight) if isinstance(raw_preflight, dict) else None
+
+        runtime_observations = [
+            RuntimeObservation.from_dict(ro) if isinstance(ro, dict) else ro
+            for ro in data.get("runtime_observations", [])
+        ]
+        perf_measurements = list(data.get("performance_measurements", []))
+
         return cls(
             execution_id=data.get("execution_id", new_execution_id()),
             work_order_id=data.get("work_order_id", ""),
@@ -927,6 +1075,11 @@ class TesterExecution:
             test_context=test_context,
             test_applicability=test_applicability,
             test_plan=test_plan,
+            preflight_result=preflight_result,
+            runtime_observations=runtime_observations,
+            performance_measurements=perf_measurements,
+            performance_results=list(data.get("performance_results", [])),
+            stability_results=list(data.get("stability_results", [])),
             created_at=data.get("created_at", utc_now()),
         )
 

@@ -31,6 +31,22 @@ OCR_ID_PREFIX = "tocr-"
 GEOMETRY_ID_PREFIX = "tgeom-"
 FRAME_OBSERVATION_ID_PREFIX = "tframe-"
 OBSERVATION_SET_ID_PREFIX = "tobset-"
+PREFLIGHT_ID_PREFIX = "tpref-"
+RUNTIME_EVENT_ID_PREFIX = "trtevt-"
+VISUAL_ASSERTION_ID_PREFIX = "tvis-"
+SCROLL_EVALUATION_ID_PREFIX = "tscrl-"
+RESPONSIVE_EVALUATION_ID_PREFIX = "tresv-"
+TYPOGRAPHY_EVALUATION_ID_PREFIX = "ttypo-"
+ANIMATION_EVALUATION_ID_PREFIX = "tanim-"
+UX_EVALUATION_ID_PREFIX = "tux-"
+PERFORMANCE_MEASUREMENT_ID_PREFIX = "tperf-"
+LOAD_PERFORMANCE_ID_PREFIX = "tloadp-"
+INTERACTION_PERFORMANCE_ID_PREFIX = "tiperf-"
+NETWORK_PERFORMANCE_ID_PREFIX = "tnetp-"
+NETWORK_REQUEST_ID_PREFIX = "treq-"
+STABILITY_EVALUATION_ID_PREFIX = "tstab-"
+ERROR_GROUP_ID_PREFIX = "terrgrp-"
+CRASH_EVENT_ID_PREFIX = "tcrash-"
 
 ALL_TESTER_PREFIXES = (
     WORK_ORDER_ID_PREFIX,
@@ -57,6 +73,22 @@ ALL_TESTER_PREFIXES = (
     GEOMETRY_ID_PREFIX,
     FRAME_OBSERVATION_ID_PREFIX,
     OBSERVATION_SET_ID_PREFIX,
+    PREFLIGHT_ID_PREFIX,
+    RUNTIME_EVENT_ID_PREFIX,
+    VISUAL_ASSERTION_ID_PREFIX,
+    SCROLL_EVALUATION_ID_PREFIX,
+    RESPONSIVE_EVALUATION_ID_PREFIX,
+    TYPOGRAPHY_EVALUATION_ID_PREFIX,
+    ANIMATION_EVALUATION_ID_PREFIX,
+    UX_EVALUATION_ID_PREFIX,
+    PERFORMANCE_MEASUREMENT_ID_PREFIX,
+    LOAD_PERFORMANCE_ID_PREFIX,
+    INTERACTION_PERFORMANCE_ID_PREFIX,
+    NETWORK_PERFORMANCE_ID_PREFIX,
+    NETWORK_REQUEST_ID_PREFIX,
+    STABILITY_EVALUATION_ID_PREFIX,
+    ERROR_GROUP_ID_PREFIX,
+    CRASH_EVENT_ID_PREFIX,
 )
 
 # Regex pattern: non-empty alphanumeric / hyphen / underscore string
@@ -181,6 +213,90 @@ def new_frame_observation_id() -> str:
 def new_observation_set_id() -> str:
     """Generate unique identifier for an ObservationSet."""
     return f"{OBSERVATION_SET_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_preflight_id() -> str:
+    """Generate unique identifier for a TestPreflightResult."""
+    return f"{PREFLIGHT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_runtime_event_id() -> str:
+    """Generate unique identifier for a RuntimeObservation event."""
+    return f"{RUNTIME_EVENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_visual_assertion_id() -> str:
+    """Generate unique identifier for a VisualAssertion."""
+    return f"{VISUAL_ASSERTION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_scroll_evaluation_id() -> str:
+    """Generate unique identifier for a ScrollEvaluation."""
+    return f"{SCROLL_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_responsive_evaluation_id() -> str:
+    """Generate unique identifier for a ResponsiveEvaluation."""
+    return f"{RESPONSIVE_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_typography_evaluation_id() -> str:
+    """Generate unique identifier for a TypographyEvaluation."""
+    return f"{TYPOGRAPHY_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_animation_evaluation_id() -> str:
+    """Generate unique identifier for an AnimationEvaluation."""
+    return f"{ANIMATION_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_ux_evaluation_id() -> str:
+    """Generate unique identifier for a UXEvaluation."""
+    return f"{UX_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_performance_measurement_id() -> str:
+    """Generate unique identifier for a PerformanceMeasurement."""
+    return f"{PERFORMANCE_MEASUREMENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_load_performance_id() -> str:
+    """Generate unique identifier for a LoadPerformanceResult."""
+    return f"{LOAD_PERFORMANCE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_interaction_performance_id() -> str:
+    """Generate unique identifier for an InteractionPerformanceResult."""
+    return f"{INTERACTION_PERFORMANCE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_network_performance_id() -> str:
+    """Generate unique identifier for a NetworkPerformanceResult."""
+    return f"{NETWORK_PERFORMANCE_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_network_request_id() -> str:
+    """Generate unique identifier for a NetworkRequestRecord."""
+    return f"{NETWORK_REQUEST_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_stability_evaluation_id() -> str:
+    """Generate unique identifier for a StabilityResult."""
+    return f"{STABILITY_EVALUATION_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_error_group_id() -> str:
+    """Generate unique identifier for an ErrorGroup."""
+    return f"{ERROR_GROUP_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+def new_crash_event_id() -> str:
+    """Generate unique identifier for a CrashEvent."""
+    return f"{CRASH_EVENT_ID_PREFIX}{uuid.uuid4().hex[:8]}"
+
+
+
+
 
 
 def is_tester_id(identifier: Optional[str]) -> bool:
@@ -332,3 +448,88 @@ def validate_frame_observation_id(frame_observation_id: str) -> None:
 def validate_observation_set_id(observation_set_id: str) -> None:
     """Validate that observation_set_id starts with 'tobset-' and conforms to identifier constraints."""
     _validate_id(observation_set_id, OBSERVATION_SET_ID_PREFIX, "observation_set_id")
+
+
+def validate_preflight_id(preflight_id: str) -> None:
+    """Validate that preflight_id starts with 'tpref-' and conforms to identifier constraints."""
+    _validate_id(preflight_id, PREFLIGHT_ID_PREFIX, "preflight_id")
+
+
+def validate_runtime_event_id(event_id: str) -> None:
+    """Validate that event_id starts with 'trtevt-' and conforms to identifier constraints."""
+    _validate_id(event_id, RUNTIME_EVENT_ID_PREFIX, "event_id")
+
+
+def validate_visual_assertion_id(assertion_id: str) -> None:
+    """Validate that assertion_id starts with 'tvis-' and conforms to identifier constraints."""
+    _validate_id(assertion_id, VISUAL_ASSERTION_ID_PREFIX, "assertion_id")
+
+
+def validate_scroll_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tscrl-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, SCROLL_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_responsive_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tresv-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, RESPONSIVE_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_typography_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'ttypo-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, TYPOGRAPHY_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_animation_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tanim-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, ANIMATION_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_ux_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tux-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, UX_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_performance_measurement_id(measurement_id: str) -> None:
+    """Validate that measurement_id starts with 'tperf-' and conforms to identifier constraints."""
+    _validate_id(measurement_id, PERFORMANCE_MEASUREMENT_ID_PREFIX, "measurement_id")
+
+
+def validate_load_performance_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tloadp-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, LOAD_PERFORMANCE_ID_PREFIX, "evaluation_id")
+
+
+def validate_interaction_performance_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tiperf-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, INTERACTION_PERFORMANCE_ID_PREFIX, "evaluation_id")
+
+
+def validate_network_performance_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tnetp-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, NETWORK_PERFORMANCE_ID_PREFIX, "evaluation_id")
+
+
+def validate_network_request_id(request_id: str) -> None:
+    """Validate that request_id starts with 'treq-' and conforms to identifier constraints."""
+    _validate_id(request_id, NETWORK_REQUEST_ID_PREFIX, "request_id")
+
+
+def validate_stability_evaluation_id(evaluation_id: str) -> None:
+    """Validate that evaluation_id starts with 'tstab-' and conforms to identifier constraints."""
+    _validate_id(evaluation_id, STABILITY_EVALUATION_ID_PREFIX, "evaluation_id")
+
+
+def validate_error_group_id(group_id: str) -> None:
+    """Validate that group_id starts with 'terrgrp-' and conforms to identifier constraints."""
+    _validate_id(group_id, ERROR_GROUP_ID_PREFIX, "group_id")
+
+
+def validate_crash_event_id(crash_id: str) -> None:
+    """Validate that crash_id starts with 'tcrash-' and conforms to identifier constraints."""
+    _validate_id(crash_id, CRASH_EVENT_ID_PREFIX, "crash_id")
+
+
+
+
+

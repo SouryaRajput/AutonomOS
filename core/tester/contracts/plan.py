@@ -299,6 +299,29 @@ class TestPlan:
                 field_name="test_cases",
             )
 
+    def validate_lineage(self, execution: Any = None, work_order: Any = None) -> None:
+        """Validate strict lineage linkages with execution and work order."""
+        if work_order is not None:
+            wo_id = getattr(work_order, "work_order_id", None)
+            if wo_id and self.work_order_id != wo_id:
+                raise TesterLineageError(
+                    f"Lineage mismatch: TestPlan belongs to work_order '{self.work_order_id}', "
+                    f"cannot be used with work_order '{wo_id}'."
+                )
+            wo_proj = getattr(work_order, "project_id", None)
+            if wo_proj and self.project_id != wo_proj:
+                raise TesterLineageError(
+                    f"Lineage mismatch: TestPlan belongs to project '{self.project_id}', "
+                    f"cannot be used with work_order in project '{wo_proj}'."
+                )
+        if execution is not None:
+            exec_id = getattr(execution, "execution_id", None)
+            if exec_id and self.execution_id != exec_id:
+                raise TesterLineageError(
+                    f"Lineage mismatch: TestPlan belongs to execution '{self.execution_id}', "
+                    f"cannot be used with execution '{exec_id}'."
+                )
+
     @property
     def is_frozen(self) -> bool:
         return self.status == TestPlanStatus.FROZEN

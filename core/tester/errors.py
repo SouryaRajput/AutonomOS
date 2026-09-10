@@ -238,3 +238,28 @@ class UnsupportedEnvironmentError(TesterError):
         super().__init__(message=message, code="UNSUPPORTED_ENVIRONMENT", details=d)
         self.environment_type = environment_type
 
+
+class TesterBudgetExceededError(TesterError):
+    """Raised when an execution, iteration, or measurement budget is exhausted."""
+    __test__ = False
+
+    def __init__(
+        self,
+        message: str,
+        budget_type: str = "MEASUREMENT_BUDGET",
+        current_value: Optional[Any] = None,
+        max_allowed: Optional[Any] = None,
+        details: Optional[dict[str, Any]] = None,
+    ):
+        d = dict(details or {})
+        d["budget_type"] = budget_type
+        if current_value is not None:
+            d["current_value"] = current_value
+        if max_allowed is not None:
+            d["max_allowed"] = max_allowed
+        super().__init__(message=message, code="TESTER_BUDGET_EXCEEDED", details=d)
+        self.budget_type = budget_type
+        self.current_value = current_value
+        self.max_allowed = max_allowed
+
+

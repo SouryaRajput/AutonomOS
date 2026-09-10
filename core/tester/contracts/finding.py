@@ -15,7 +15,7 @@ from core.tester.contracts.identifiers import (
     validate_finding_id,
     validate_work_order_id,
 )
-from core.tester.errors import TesterValidationError
+from core.tester.errors import TesterBoundaryViolationError, TesterValidationError
 from core.tester.types import (
     AcceptanceCriterionStatus,
     DefectSeverity,
@@ -175,6 +175,11 @@ class AcceptanceCriterionResult:
     explanation: str = ""
     notes: str = ""
     trace: dict[str, Any] = field(default_factory=dict)
+    supporting_test_cases: list[str] = field(default_factory=list)
+    observations: list[Any] = field(default_factory=list)
+    reason: str = ""
+    confidence: float = 1.0
+    provenance: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if isinstance(self.status, str):
@@ -183,6 +188,12 @@ class AcceptanceCriterionResult:
             except (ValueError, KeyError):
                 self.status = AcceptanceCriterionStatus.NOT_EVALUATED
 
+        if not self.reason and (self.explanation or self.notes):
+            self.reason = self.explanation or self.notes
+        elif self.reason and not self.explanation:
+            self.explanation = self.reason
+            self.notes = self.reason
+
         if not self.explanation and self.notes:
             self.explanation = self.notes
         elif not self.notes and self.explanation:
@@ -190,6 +201,9 @@ class AcceptanceCriterionResult:
 
         self.evidence_ids = list(self.evidence_ids)
         self.trace = dict(self.trace)
+        self.supporting_test_cases = list(self.supporting_test_cases)
+        self.observations = list(self.observations)
+        self.provenance = dict(self.provenance)
 
     @property
     def is_pass(self) -> bool:
@@ -200,8 +214,37 @@ class AcceptanceCriterionResult:
         return self.status == AcceptanceCriterionStatus.FAIL
 
     @property
+    def is_blocked(self) -> bool:
+        return self.status == AcceptanceCriterionStatus.BLOCKED
+
+    @property
+    def is_not_verified(self) -> bool:
+        return self.status in (
+            AcceptanceCriterionStatus.NOT_VERIFIED,
+            AcceptanceCriterionStatus.NOT_EVALUATED,
+            AcceptanceCriterionStatus.UNCERTAIN,
+        )
+
+    @property
+    def is_not_applicable(self) -> bool:
+        return self.status == AcceptanceCriterionStatus.NOT_APPLICABLE
+
+    @property
     def is_uncertain(self) -> bool:
-        return self.status in (AcceptanceCriterionStatus.UNCERTAIN, AcceptanceCriterionStatus.NOT_VERIFIED, AcceptanceCriterionStatus.NOT_EVALUATED)
+        return self.is_not_verified
+
+    def apply_fix(self, *args, **kwargs) -> Any:
+        """Zero fixing guard: Acceptance evaluation does not perform automatic fixes."""
+        raise TesterBoundaryViolationError(
+            action="AUTOMATIC_FIX",
+            reason=(
+                f"AcceptanceCriterionResult '{self.criterion_id}' is an evaluation object. "
+                "Tester does not perform automatic fixes on product or source code."
+            ),
+        )
+
+    def auto_fix(self, *args, **kwargs) -> Any:
+        return self.apply_fix(*args, **kwargs)
 
     def validate(self) -> None:
         if not self.criterion_id or not str(self.criterion_id).strip():
@@ -223,6 +266,14 @@ class AcceptanceCriterionResult:
             "explanation": self.explanation,
             "notes": self.notes,
             "trace": dict(self.trace),
+            "supporting_test_cases": list(self.supporting_test_cases),
+            "observations": [
+                obs.to_dict() if hasattr(obs, "to_dict") else obs
+                for obs in self.observations
+            ],
+            "reason": self.reason,
+            "confidence": self.confidence,
+            "provenance": dict(self.provenance),
         }
 
     @classmethod
@@ -233,16 +284,21 @@ class AcceptanceCriterionResult:
         except (ValueError, KeyError):
             status = AcceptanceCriterionStatus.NOT_EVALUATED
 
-        expl = str(data.get("explanation") or data.get("notes", ""))
+        reason_val = str(data.get("reason") or data.get("explanation") or data.get("notes") or "")
         return cls(
             criterion_id=str(data.get("criterion_id", "")),
             description=str(data.get("description", "")),
             status=status,
             observed_behavior=str(data.get("observed_behavior", "")),
             evidence_ids=list(data.get("evidence_ids", [])),
-            explanation=expl,
-            notes=expl,
+            explanation=reason_val,
+            notes=reason_val,
             trace=dict(data.get("trace", {})),
+            supporting_test_cases=list(data.get("supporting_test_cases", [])),
+            observations=list(data.get("observations", [])),
+            reason=reason_val,
+            confidence=float(data.get("confidence", 1.0)),
+            provenance=dict(data.get("provenance", {})),
         )
 
 
@@ -276,6 +332,8 @@ class TesterDefect:
     confidence: float = 1.0
     is_regression: bool = False
     trace: dict[str, Any] = field(default_factory=dict)
+    acceptance_criterion_id: Optional[str] = None
+    provenance: dict[str, Any] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
     created_at: str = field(default_factory=utc_now)
 
@@ -313,6 +371,46 @@ class TesterDefect:
         self.reproduction_steps = list(self.reproduction_steps)
         self.evidence_ids = list(self.evidence_ids)
         self.trace = dict(self.trace)
+        self.provenance = dict(self.provenance)
+
+    @property
+    def test_case_id(self) -> Optional[str]:
+        return self.test_id
+
+    @test_case_id.setter
+    def test_case_id(self, val: Optional[str]) -> None:
+        self.test_id = val
+
+    @property
+    def type(self) -> DefectType:
+        return self.defect_type
+
+    @type.setter
+    def type(self, val: DefectType | str) -> None:
+        if isinstance(val, str):
+            try:
+                self.defect_type = DefectType(val.upper())
+            except (ValueError, KeyError):
+                self.defect_type = DefectType.FUNCTIONAL
+        else:
+            self.defect_type = val
+
+    @property
+    def affected_surface(self) -> str:
+        return self.affected_area
+
+    @affected_surface.setter
+    def affected_surface(self, val: str) -> None:
+        self.affected_area = val
+
+    def apply_fix(self, *args, **kwargs) -> Any:
+        raise TesterBoundaryViolationError(
+            action="AUTOMATIC_FIX",
+            reason="TesterDefect cannot automatically apply fixes. Defect repair is strictly prohibited in Tester V1.",
+        )
+
+    def auto_fix(self, *args, **kwargs) -> Any:
+        return self.apply_fix(*args, **kwargs)
 
     def validate(self) -> None:
         """Validate defect structure and enforce the anti-opinion boundary."""
@@ -352,18 +450,23 @@ class TesterDefect:
             "description": self.description,
             "severity": self.severity.value if hasattr(self.severity, "value") else str(self.severity),
             "defect_type": self.defect_type.value if hasattr(self.defect_type, "value") else str(self.defect_type),
+            "type": self.defect_type.value if hasattr(self.defect_type, "value") else str(self.defect_type),
             "execution_id": self.execution_id,
             "reproduction_steps": list(self.reproduction_steps),
             "expected_behavior": self.expected_behavior,
             "observed_behavior": self.observed_behavior,
             "actual_behavior": self.actual_behavior,
             "affected_area": self.affected_area,
+            "affected_surface": self.affected_area,
             "affected_components": list(self.affected_components),
             "test_id": self.test_id,
+            "test_case_id": self.test_id,
             "evidence_ids": list(self.evidence_ids),
+            "acceptance_criterion_id": self.acceptance_criterion_id,
             "confidence": self.confidence,
             "is_regression": self.is_regression,
             "trace": dict(self.trace),
+            "provenance": dict(self.provenance),
             "metadata": dict(self.metadata),
             "created_at": self.created_at,
         }
@@ -376,13 +479,15 @@ class TesterDefect:
         except (ValueError, KeyError):
             severity = DefectSeverity.MEDIUM
 
-        dt_raw = data.get("defect_type", DefectType.FUNCTIONAL.value)
+        dt_raw = data.get("defect_type") or data.get("type", DefectType.FUNCTIONAL.value)
         try:
             defect_type = DefectType(str(dt_raw).upper())
         except (ValueError, KeyError):
             defect_type = DefectType.FUNCTIONAL
 
         obs = str(data.get("observed_behavior") or data.get("actual_behavior", ""))
+        tid = data.get("test_id") or data.get("test_case_id")
+        aff_area = str(data.get("affected_area") or data.get("affected_surface", ""))
         return cls(
             defect_id=str(data.get("defect_id", new_defect_id())),
             work_order_id=str(data.get("work_order_id", "")),
@@ -395,13 +500,15 @@ class TesterDefect:
             expected_behavior=str(data.get("expected_behavior", "")),
             observed_behavior=obs,
             actual_behavior=obs,
-            affected_area=str(data.get("affected_area", "")),
+            affected_area=aff_area,
             affected_components=list(data.get("affected_components", [])),
-            test_id=data.get("test_id"),
+            test_id=tid,
             evidence_ids=list(data.get("evidence_ids", [])),
+            acceptance_criterion_id=data.get("acceptance_criterion_id"),
             confidence=float(data.get("confidence", 1.0)),
             is_regression=bool(data.get("is_regression", False)),
             trace=dict(data.get("trace", {})),
+            provenance=dict(data.get("provenance", {})),
             metadata=dict(data.get("metadata", {})),
             created_at=str(data.get("created_at", utc_now())),
         )

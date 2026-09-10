@@ -140,6 +140,9 @@ class TestApplicabilityReport:
         cat_enum = category if isinstance(category, ApplicableTestCategory) else ApplicableTestCategory(str(category).upper())
         return self.classifications.get(cat_enum)
 
+    def get_category(self, category: ApplicableTestCategory | str) -> Optional[CategoryApplicability]:
+        return self.get(category)
+
     def get_level(self, category: ApplicableTestCategory | str) -> ApplicabilityLevel:
         ca = self.get(category)
         return ca.level if ca else ApplicabilityLevel.UNKNOWN

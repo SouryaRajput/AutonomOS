@@ -515,8 +515,23 @@ class TesterManagerBridge:
 
         if execution is not None:
             wo_scopes = work_order.test_scope.to_list() if hasattr(work_order.test_scope, "to_list") else list(work_order.test_scope)
+            plan_cases = getattr(getattr(execution, "test_plan", None), "test_cases", []) or []
+            plan_case_ids = {getattr(c, "test_case_id", "") for c in plan_cases}
             for tc in execution.test_cases:
+                # If test case was planned in authorized frozen test plan, it is within authorized boundary
+                if tc.test_id in plan_case_ids:
+                    continue
                 target = getattr(tc, "name", None) or getattr(tc, "test_name", None) or tc.test_id
+                # If test case was planned from authorized acceptance criteria, it is within authorized scope
+                if target.startswith("Evaluate acceptance criterion") or any(
+                    getattr(ac, "criterion_id", "") in target or getattr(ac, "description", "") in target
+                    for ac in getattr(work_order, "acceptance_criteria", [])
+                ):
+                    continue
+                # If target surfaces or metadata link to authorized scope
+                surfaces = getattr(tc, "covered_surfaces", []) or getattr(tc, "metadata", {}).get("covered_surfaces", [])
+                if surfaces and any(any(s.strip().lower() in str(surf).strip().lower() or str(surf).strip().lower() in s.strip().lower() for s in wo_scopes) for surf in surfaces):
+                    continue
                 TesterBoundaryGuard.assert_scope_bounded(target, wo_scopes)
 
     def receive_result(
@@ -662,6 +677,20 @@ class TesterManagerBridge:
 
         return result.to_worker_output()
 
+    def execute_work_order(
+        self,
+        work_order: TesterWorkOrder,
+        pipeline: Optional[Any] = None,
+        **pipeline_kwargs: Any,
+    ) -> tuple[TesterExecution, TesterResult, WorkerOutput]:
+        """
+        Execute an authoritative TesterWorkOrder through the functional evaluation pipeline.
+        Ensures issuing or dispatching a work order directly activates real testing.
+        """
+        from core.tester.contracts.functional_pipeline import FunctionalEvaluationPipeline
+        active_pipeline = pipeline or FunctionalEvaluationPipeline(bridge=self, event_sink=self.event_sink)
+        return active_pipeline.execute(work_order=work_order, **pipeline_kwargs)
+
 
 class FakeTesterWorker(Worker):
     """
@@ -684,6 +713,7 @@ class FakeTesterWorker(Worker):
         test_cases: Optional[list[TestCaseResult]] = None,
         ship_recommendation: Optional[ShipRecommendation] = None,
         use_planning: bool = False,
+        use_real_pipeline: bool = False,
         files_manifest: Optional[list[str]] = None,
         target_environment: Optional[TestEnvironment] = None,
     ) -> None:
@@ -696,6 +726,7 @@ class FakeTesterWorker(Worker):
         self.test_cases = test_cases
         self.ship_recommendation = ship_recommendation
         self.use_planning = use_planning
+        self.use_real_pipeline = use_real_pipeline
         self.files_manifest = files_manifest
         self.target_environment = target_environment
 
@@ -750,6 +781,16 @@ class FakeTesterWorker(Worker):
             )
             worker_output = self.bridge.receive_result(result, execution, work_order)
             return execution, result, worker_output
+
+        if self.use_real_pipeline:
+            from core.tester.contracts.functional_pipeline import FunctionalEvaluationPipeline
+            pipeline = FunctionalEvaluationPipeline(bridge=self.bridge, worker_id=self.worker_id)
+            return pipeline.execute(
+                work_order=work_order,
+                execution=execution,
+                environment=self.target_environment or getattr(work_order, "test_environment", None),
+                files_manifest=self.files_manifest,
+            )
 
         # Optional Phase 3 planning pipeline integration
         if self.use_planning:

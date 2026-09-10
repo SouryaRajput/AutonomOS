@@ -50,6 +50,22 @@ from core.tester.contracts.identifiers import (
     FRAME_OBSERVATION_ID_PREFIX,
     OBSERVATION_SET_ID_PREFIX,
     PLAN_ID_PREFIX,
+    PREFLIGHT_ID_PREFIX,
+    RUNTIME_EVENT_ID_PREFIX,
+    VISUAL_ASSERTION_ID_PREFIX,
+    SCROLL_EVALUATION_ID_PREFIX,
+    RESPONSIVE_EVALUATION_ID_PREFIX,
+    TYPOGRAPHY_EVALUATION_ID_PREFIX,
+    ANIMATION_EVALUATION_ID_PREFIX,
+    UX_EVALUATION_ID_PREFIX,
+    PERFORMANCE_MEASUREMENT_ID_PREFIX,
+    LOAD_PERFORMANCE_ID_PREFIX,
+    INTERACTION_PERFORMANCE_ID_PREFIX,
+    NETWORK_PERFORMANCE_ID_PREFIX,
+    NETWORK_REQUEST_ID_PREFIX,
+    STABILITY_EVALUATION_ID_PREFIX,
+    ERROR_GROUP_ID_PREFIX,
+    CRASH_EVENT_ID_PREFIX,
     RECOMMENDATION_ID_PREFIX,
     RESULT_ID_PREFIX,
     RUNTIME_ID_PREFIX,
@@ -76,6 +92,8 @@ from core.tester.contracts.identifiers import (
     new_observation_set_id,
     new_ocr_id,
     new_plan_id,
+    new_preflight_id,
+    new_runtime_event_id,
     new_recommendation_id,
     new_result_id,
     new_runtime_id,
@@ -85,6 +103,20 @@ from core.tester.contracts.identifiers import (
     new_trace_id,
     new_validation_report_id,
     new_work_order_id,
+    new_visual_assertion_id,
+    new_scroll_evaluation_id,
+    new_responsive_evaluation_id,
+    new_typography_evaluation_id,
+    new_animation_evaluation_id,
+    new_ux_evaluation_id,
+    new_performance_measurement_id,
+    new_load_performance_id,
+    new_interaction_performance_id,
+    new_network_performance_id,
+    new_network_request_id,
+    new_stability_evaluation_id,
+    new_error_group_id,
+    new_crash_event_id,
     validate_action_id,
     validate_blocker_id,
     validate_coverage_report_id,
@@ -100,6 +132,8 @@ from core.tester.contracts.identifiers import (
     validate_observation_set_id,
     validate_ocr_id,
     validate_plan_id,
+    validate_preflight_id,
+    validate_runtime_event_id,
     validate_recommendation_id,
     validate_result_id,
     validate_runtime_id,
@@ -109,6 +143,20 @@ from core.tester.contracts.identifiers import (
     validate_trace_id,
     validate_validation_report_id,
     validate_work_order_id,
+    validate_visual_assertion_id,
+    validate_scroll_evaluation_id,
+    validate_responsive_evaluation_id,
+    validate_typography_evaluation_id,
+    validate_animation_evaluation_id,
+    validate_ux_evaluation_id,
+    validate_performance_measurement_id,
+    validate_load_performance_id,
+    validate_interaction_performance_id,
+    validate_network_performance_id,
+    validate_network_request_id,
+    validate_stability_evaluation_id,
+    validate_error_group_id,
+    validate_crash_event_id,
 )
 from core.tester.contracts.geometry import (
     GeometryObservation,
@@ -151,11 +199,25 @@ from core.tester.contracts.plan_validator import (
     TestPlanValidator,
 )
 from core.tester.contracts.planning_pipeline import TestPlanningPipeline
+from core.tester.contracts.preflight import (
+    ResourceCheckResult,
+    RouteCheckResult,
+    TestPreflightResult,
+)
+from core.tester.evaluator.preflight_evaluator import TestPreflightEvaluator
+from core.tester.contracts.runtime_observation import RuntimeObservation
+from core.tester.evaluator.runtime_evaluator import RuntimeEvaluator
+from core.tester.evaluator.functional_evaluator import FunctionalAcceptanceEvaluator
+from core.tester.evaluator.defect_classifier import ClassificationResult, DefectClassifier
 from core.tester.contracts.observation_pipeline import TestObservationPipeline
 from core.tester.contracts.action import TestActionRecord
 from core.tester.contracts.browser_runtime import (
     BrowserTestRuntime,
     LocalAppTestRuntime,
+)
+from core.tester.contracts.functional_pipeline import (
+    FunctionalEvaluationPipeline,
+    TesterExecutionPipeline,
 )
 from core.tester.contracts.interaction import (
     InteractionEngine,
@@ -204,11 +266,101 @@ from core.tester.contracts.session import (
     NavigationResult,
     PlaywrightBrowserSession,
 )
-from core.tester.contracts.test_case import TestCaseResult
+from core.tester.contracts.test_case import TestCaseResult, TestStepResult
+from core.tester.executor.test_case_executor import TestCaseExecutor
 from core.tester.contracts.thresholds import QualityThresholds
 from core.tester.contracts.trace import TesterTrace
 from core.tester.contracts.validator import TesterWorkOrderValidator
 from core.tester.contracts.work_order import TesterWorkOrder
+from core.tester.contracts.visual import (
+    VisualAssertion,
+    VisualAssertionResult,
+    VisualEvaluationResult,
+)
+from core.tester.evaluator.visual_evaluator import VisualEvaluator
+from core.tester.contracts.scroll import (
+    ScrollAssertion,
+    ScrollBudget,
+    ScrollEvaluationResult,
+    ScrollPosition,
+)
+from core.tester.evaluator.scroll_evaluator import ScrollEvaluator
+from core.tester.contracts.responsive import (
+    DEFAULT_DESKTOP_PROFILE,
+    DEFAULT_DESKTOP_VIEWPORT,
+    DEFAULT_MOBILE_PROFILE,
+    DEFAULT_MOBILE_VIEWPORT,
+    DEFAULT_TABLET_PROFILE,
+    DEFAULT_TABLET_VIEWPORT,
+    DEFAULT_VIEWPORT_PROFILES,
+    MAX_VIEWPORT_COUNT,
+    ResponsiveCheck,
+    ResponsiveEvaluationResult,
+    ResponsiveViewportResult,
+    ViewportProfile,
+)
+from core.tester.evaluator.responsive_evaluator import ResponsiveEvaluator
+from core.tester.contracts.typography import (
+    MIN_OCR_CONFIDENCE,
+    TextRequirement,
+    TypographyAssertion,
+    TypographyAssertionResult,
+    TypographyEvaluationResult,
+)
+from core.tester.evaluator.typography_evaluator import TypographyEvaluator
+from core.tester.contracts.animation import (
+    AnimationAssertion,
+    AnimationAssertionResult,
+    AnimationEvaluationResult,
+    AnimationStateExpectation,
+)
+from core.tester.evaluator.animation_evaluator import AnimationEvaluator
+from core.tester.contracts.ux import (
+    UXFlowExpectation,
+    UXAssertion,
+    UXAssertionResult,
+    UXEvaluationResult,
+)
+from core.tester.evaluator.ux_evaluator import UXFlowEvaluator
+from core.tester.contracts.performance import (
+    PerformanceEnvironment,
+    PerformanceMeasurement,
+    PerformanceMeasurementBudget,
+)
+from core.tester.evaluator.performance_recorder import (
+    PerformanceMeasurementRecorder,
+)
+from core.tester.contracts.load_performance import (
+    LoadPerformanceTestSpec,
+    LoadPerformanceResult,
+)
+from core.tester.evaluator.load_performance_evaluator import (
+    LoadNavigationPerformanceEvaluator,
+)
+from core.tester.contracts.interaction_performance import (
+    InteractionPerformanceSpec,
+    InteractionPerformanceResult,
+)
+from core.tester.evaluator.interaction_performance_evaluator import (
+    InteractionPerformanceEvaluator,
+)
+from core.tester.contracts.network_performance import (
+    NetworkRequestRecord,
+    NetworkPerformanceSpec,
+    NetworkPerformanceResult,
+)
+from core.tester.evaluator.network_performance_evaluator import (
+    NetworkPerformanceEvaluator,
+)
+from core.tester.contracts.stability import (
+    ErrorGroup,
+    CrashEvent,
+    StabilitySpec,
+    StabilityResult,
+)
+from core.tester.evaluator.stability_evaluator import (
+    StabilityEvaluator,
+)
 
 __all__ = [
     "AcceptanceCriterion",
@@ -216,9 +368,13 @@ __all__ = [
     "BrowserSession",
     "BrowserTestRuntime",
     "CategoryApplicability",
+    "ClassificationResult",
     "CoverageGap",
     "CriterionCoverage",
+    "DefectClassifier",
     "FakeTesterWorker",
+    "FunctionalAcceptanceEvaluator",
+    "FunctionalEvaluationPipeline",
     "HttpBrowserSession",
     "InteractionEngine",
     "InteractionResult",
@@ -249,7 +405,9 @@ __all__ = [
     "TestApplicabilityClassifier",
     "TestApplicabilityReport",
     "TestCase",
+    "TestCaseExecutor",
     "TestCaseResult",
+    "TestStepResult",
     "TestContext",
     "TestContextBuilder",
     "TestCoverageEvaluator",
@@ -262,6 +420,10 @@ __all__ = [
     "TestPlanValidator",
     "TestPlanningPipeline",
     "TestObservationPipeline",
+    "ResourceCheckResult",
+    "RouteCheckResult",
+    "TestPreflightEvaluator",
+    "TestPreflightResult",
     "TestPrioritizer",
     "TestRuntime",
     "TestRuntimeConfig",
@@ -275,6 +437,7 @@ __all__ = [
     "TesterDefect",
     "TesterEvidence",
     "TesterExecution",
+    "TesterExecutionPipeline",
     "TesterFinding",
     "TesterLifecycle",
     "TesterManagerBridge",
@@ -322,6 +485,7 @@ __all__ = [
     "OCR_ID_PREFIX",
     "GEOMETRY_ID_PREFIX",
     "PLAN_ID_PREFIX",
+    "PREFLIGHT_ID_PREFIX",
     "RECOMMENDATION_ID_PREFIX",
     "RESULT_ID_PREFIX",
     "RUNTIME_ID_PREFIX",
@@ -347,6 +511,7 @@ __all__ = [
     "new_observation_set_id",
     "new_ocr_id",
     "new_plan_id",
+    "new_preflight_id",
     "new_recommendation_id",
     "new_result_id",
     "new_runtime_id",
@@ -371,6 +536,8 @@ __all__ = [
     "validate_observation_set_id",
     "validate_ocr_id",
     "validate_plan_id",
+    "validate_preflight_id",
+    "validate_runtime_event_id",
     "validate_recommendation_id",
     "validate_result_id",
     "validate_runtime_id",
@@ -380,4 +547,108 @@ __all__ = [
     "validate_trace_id",
     "validate_validation_report_id",
     "validate_work_order_id",
+    "RUNTIME_EVENT_ID_PREFIX",
+    "new_runtime_event_id",
+    "RuntimeObservation",
+    "RuntimeEvaluator",
+    "VISUAL_ASSERTION_ID_PREFIX",
+    "new_visual_assertion_id",
+    "validate_visual_assertion_id",
+    "VisualAssertion",
+    "VisualAssertionResult",
+    "VisualEvaluationResult",
+    "VisualEvaluator",
+    "SCROLL_EVALUATION_ID_PREFIX",
+    "new_scroll_evaluation_id",
+    "validate_scroll_evaluation_id",
+    "ScrollPosition",
+    "ScrollBudget",
+    "ScrollAssertion",
+    "ScrollEvaluationResult",
+    "ScrollEvaluator",
+    "RESPONSIVE_EVALUATION_ID_PREFIX",
+    "new_responsive_evaluation_id",
+    "validate_responsive_evaluation_id",
+    "DEFAULT_DESKTOP_PROFILE",
+    "DEFAULT_DESKTOP_VIEWPORT",
+    "DEFAULT_MOBILE_PROFILE",
+    "DEFAULT_MOBILE_VIEWPORT",
+    "DEFAULT_TABLET_PROFILE",
+    "DEFAULT_TABLET_VIEWPORT",
+    "DEFAULT_VIEWPORT_PROFILES",
+    "MAX_VIEWPORT_COUNT",
+    "ResponsiveCheck",
+    "ResponsiveEvaluationResult",
+    "ResponsiveViewportResult",
+    "ViewportProfile",
+    "ResponsiveEvaluator",
+    "TYPOGRAPHY_EVALUATION_ID_PREFIX",
+    "new_typography_evaluation_id",
+    "validate_typography_evaluation_id",
+    "MIN_OCR_CONFIDENCE",
+    "TextRequirement",
+    "TypographyAssertion",
+    "TypographyAssertionResult",
+    "TypographyEvaluationResult",
+    "TypographyEvaluator",
+    "ANIMATION_EVALUATION_ID_PREFIX",
+    "new_animation_evaluation_id",
+    "validate_animation_evaluation_id",
+    "AnimationAssertion",
+    "AnimationAssertionResult",
+    "AnimationEvaluationResult",
+    "AnimationStateExpectation",
+    "AnimationEvaluator",
+    "UX_EVALUATION_ID_PREFIX",
+    "new_ux_evaluation_id",
+    "validate_ux_evaluation_id",
+    "UXFlowExpectation",
+    "UXAssertion",
+    "UXAssertionResult",
+    "UXEvaluationResult",
+    "UXFlowEvaluator",
+    "PERFORMANCE_MEASUREMENT_ID_PREFIX",
+    "new_performance_measurement_id",
+    "validate_performance_measurement_id",
+    "PerformanceEnvironment",
+    "PerformanceMeasurementBudget",
+    "PerformanceMeasurement",
+    "PerformanceMeasurementRecorder",
+    "LOAD_PERFORMANCE_ID_PREFIX",
+    "new_load_performance_id",
+    "validate_load_performance_id",
+    "LoadPerformanceTestSpec",
+    "LoadPerformanceResult",
+    "LoadNavigationPerformanceEvaluator",
+    "INTERACTION_PERFORMANCE_ID_PREFIX",
+    "new_interaction_performance_id",
+    "validate_interaction_performance_id",
+    "InteractionPerformanceSpec",
+    "InteractionPerformanceResult",
+    "InteractionPerformanceEvaluator",
+    "NETWORK_PERFORMANCE_ID_PREFIX",
+    "NETWORK_REQUEST_ID_PREFIX",
+    "new_network_performance_id",
+    "validate_network_performance_id",
+    "new_network_request_id",
+    "validate_network_request_id",
+    "NetworkRequestRecord",
+    "NetworkPerformanceSpec",
+    "NetworkPerformanceResult",
+    "NetworkPerformanceEvaluator",
+    "STABILITY_EVALUATION_ID_PREFIX",
+    "ERROR_GROUP_ID_PREFIX",
+    "CRASH_EVENT_ID_PREFIX",
+    "new_stability_evaluation_id",
+    "validate_stability_evaluation_id",
+    "new_error_group_id",
+    "validate_error_group_id",
+    "new_crash_event_id",
+    "validate_crash_event_id",
+    "ErrorGroup",
+    "CrashEvent",
+    "StabilitySpec",
+    "StabilityResult",
+    "StabilityEvaluator",
 ]
+
